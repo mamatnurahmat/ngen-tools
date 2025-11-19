@@ -4,7 +4,124 @@
 import sys
 import os
 import subprocess
+import json
 from pathlib import Path
+
+
+def get_alias_file_path() -> Path:
+    """
+    Get the path to the alias configuration file.
+    
+    Returns:
+        Path to $HOME/.ngenctl/alias.json
+    """
+    home = Path.home()
+    alias_dir = home / ".ngenctl"
+    alias_file = alias_dir / "alias.json"
+    return alias_file
+
+
+def load_aliases() -> dict:
+    """
+    Load aliases from $HOME/.ngenctl/alias.json.
+    Creates directory and file if they don't exist.
+    
+    Returns:
+        Dictionary of aliases (empty dict if file doesn't exist or is invalid)
+    """
+    alias_file = get_alias_file_path()
+    
+    # Create directory if it doesn't exist
+    alias_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Create empty JSON file if it doesn't exist
+    if not alias_file.exists():
+        try:
+            with open(alias_file, 'w') as f:
+                json.dump({}, f)
+            return {}
+        except Exception as e:
+            print(f"Warning: Could not create alias file {alias_file}: {e}", file=sys.stderr)
+            return {}
+    
+    # Load existing aliases
+    try:
+        with open(alias_file, 'r') as f:
+            aliases = json.load(f)
+            if not isinstance(aliases, dict):
+                print(f"Warning: Invalid alias file format in {alias_file}", file=sys.stderr)
+                return {}
+            return aliases
+    except json.JSONDecodeError as e:
+        print(f"Warning: Invalid JSON in alias file {alias_file}: {e}", file=sys.stderr)
+        return {}
+    except Exception as e:
+        print(f"Warning: Could not read alias file {alias_file}: {e}", file=sys.stderr)
+        return {}
+
+
+def save_aliases(aliases: dict) -> bool:
+    """
+    Save aliases to $HOME/.ngenctl/alias.json.
+    
+    Args:
+        aliases: Dictionary of aliases to save
+        
+    Returns:
+        True if saved successfully, False otherwise
+    """
+    alias_file = get_alias_file_path()
+    
+    try:
+        # Ensure directory exists
+        alias_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(alias_file, 'w') as f:
+            json.dump(aliases, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving aliases to {alias_file}: {e}", file=sys.stderr)
+        return False
+
+
+def resolve_alias(command: str, aliases: dict, visited: set = None) -> str:
+    """
+    Resolve alias to actual command, handling nested aliases and recursion.
+    
+    Args:
+        command: The command to resolve
+        aliases: Dictionary of aliases
+        visited: Set of already visited commands (to detect recursion)
+        
+    Returns:
+        Resolved command string, or original command if not an alias
+    """
+    if visited is None:
+        visited = set()
+    
+    # Check if this command is an alias
+    if command not in aliases:
+        return command
+    
+    # Detect recursion
+    if command in visited:
+        print(f"Error: Circular alias detected involving '{command}'", file=sys.stderr)
+        return command
+    
+    # Resolve the alias
+    visited.add(command)
+    expanded = aliases[command]
+    
+    # If expanded command is also an alias, resolve recursively
+    if isinstance(expanded, str):
+        parts = expanded.split(None, 1)
+        if parts and parts[0] in aliases:
+            resolved = resolve_alias(parts[0], aliases, visited)
+            if len(parts) > 1:
+                return f"{resolved} {parts[1]}"
+            return resolved
+    
+    return expanded
 
 
 def find_script(command: str) -> Path:
@@ -61,6 +178,9 @@ def execute_script(script_path: Path, args: list) -> int:
 
 def main():
     """Main entry point for ngenctl command."""
+    # Load aliases
+    aliases = load_aliases()
+    
     if len(sys.argv) < 2:
         print("Usage: ngenctl <command> [args...]", file=sys.stderr)
         print("\nAvailable commands:")
@@ -81,9 +201,15 @@ def main():
                 if script.is_file():
                     command = script.name.replace("ngenctl-", "", 1)
                     commands_found.add(command)
+        # Add aliases to the list
+        for alias_name in aliases.keys():
+            commands_found.add(alias_name)
         # Print commands
         for cmd in sorted(commands_found):
-            print(f"  {cmd}")
+            if cmd in aliases:
+                print(f"  {cmd} (alias: {aliases[cmd]})")
+            else:
+                print(f"  {cmd}")
         if not commands_found:
             print("  (no commands found)")
         sys.exit(1)
@@ -99,7 +225,20 @@ def main():
         print("  ngenctl git clone <repo>")
         sys.exit(0)
     
-    args = sys.argv[2:]
+    # Check if command is an alias and resolve it
+    if command in aliases:
+        expanded = resolve_alias(command, aliases)
+        # Split expanded command into command and remaining args
+        expanded_parts = expanded.split()
+        if expanded_parts:
+            command = expanded_parts[0]
+            # Prepend any additional args from the alias expansion
+            existing_args = sys.argv[2:]
+            args = expanded_parts[1:] + existing_args
+        else:
+            args = sys.argv[2:]
+    else:
+        args = sys.argv[2:]
     
     script_path = find_script(command)
     
