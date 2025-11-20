@@ -3,16 +3,19 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ngenctl"
-version = "0.1.14"
-description = "Universal command wrapper package that dispatches to /usr/local/bin/ngenctl-* scripts"
+name = "ngen-j"
+version = "0.1.1"
+description = "Jenkins API management CLI and universal command wrapper package"
 readme = "README.md"
 requires-python = ">=3.7"
 license = "MIT"
 authors = [
-    {name = "ngenctl contributors"}
+    {name = "ngen-j contributors"}
 ]
-keywords = ["cli", "wrapper", "command", "dispatch"]
+keywords = ["cli", "wrapper", "command", "dispatch", "jenkins", "api"]
+dependencies = [
+    "api4jenkins>=1.0.0",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -25,24 +28,21 @@ classifiers = [
 ]
 
 [project.scripts]
-ngenctl = "ngenctl.cli:main"
+ngen-j = "ngen_j.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/mamatnurahmat/ngenctl"
-Repository = "https://github.com/mamatnurahmat/ngenctl"
-Issues = "https://github.com/mamatnurahmat/ngenctl/issues"
+Homepage = "https://github.com/mamatnurahmat/ngen-j"
+Repository = "https://github.com/mamatnurahmat/ngen-j"
+Issues = "https://github.com/mamatnurahmat/ngen-j/issues"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.package-dir]
 "" = "."
-ngenctl = "ngenctl"
+ngen_j = "ngen_j"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ngenctl*"]
-
-[tool.setuptools.package-data]
-ngenctl = ["scripts/*"]
+include = ["ngen_j*"]
 
