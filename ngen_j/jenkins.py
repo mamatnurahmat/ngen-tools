@@ -116,21 +116,208 @@ class JenkinsClient:
             sys.exit(1)
     
     def get_job(self, job_name: str) -> Dict[str, Any]:
-        """Get job details."""
+        """Get job details with recent build history."""
         try:
             job = self.client[job_name]
-            return {
-                'name': job.name,
-                'url': job.url,
+            if job is None:
+                raise KeyError(f"Job '{job_name}' not found")
+
+            # Get basic job info
+            job_info = {
+                'name': getattr(job, 'name', job_name),
+                'url': getattr(job, 'url', f"{self.url}/job/{job_name}/"),
                 'description': getattr(job, 'description', ''),
                 'buildable': getattr(job, 'buildable', False),
             }
+
+            # Get recent builds (up to 3, starting from most recent)
+            recent_builds = []
+            try:
+                # Try to get builds using different methods
+                builds = []
+                if hasattr(job, 'builds'):
+                    # Use builds attribute if available (usually most recent first)
+                    builds = list(job.builds)[:3]
+                elif hasattr(job, 'iter_builds'):
+                    # Use iter_builds method if available
+                    builds = list(job.iter_builds())[:3]
+                else:
+                    # Fallback: try to get recent builds by trying higher numbers first
+                    # Jenkins typically numbers builds sequentially, so we'll try recent numbers
+                    max_attempts = 500  # Try up to build number 500 to find recent builds
+                    found_builds = []
+
+                    for build_num in range(max_attempts, 0, -1):  # Start from highest number
+                        try:
+                            build = job[build_num]
+                            if build:
+                                found_builds.append(build)
+                                if len(found_builds) >= 3:
+                                    break
+                        except (KeyError, IndexError):
+                            continue  # Build number doesn't exist, try lower number
+
+                    builds = found_builds
+
+                # Sort builds by number (highest first) to ensure most recent are shown first
+                builds.sort(key=lambda b: getattr(b, 'number', 0), reverse=True)
+
+                for build in builds[:3]:  # Take only first 3 (most recent)
+                    if build:
+                        build_info = {
+                            'number': getattr(build, 'number', 'N/A'),
+                            'url': getattr(build, 'url', f"{job_info['url']}{getattr(build, 'number', '')}/"),
+                            'status': self._get_build_status(build),
+                            'start_time': self._get_build_start_time(build),
+                            'duration': self._get_build_duration(build),
+                        }
+                        recent_builds.append(build_info)
+
+            except Exception as e:
+                # If we can't get build history, continue without it
+                pass
+
+            job_info['recent_builds'] = recent_builds
+            return job_info
+
         except KeyError:
             print(f"Error: Job '{job_name}' not found", file=sys.stderr)
             sys.exit(1)
         except Exception as e:
             print(f"Error getting job: {e}", file=sys.stderr)
             sys.exit(1)
+
+    def get_recent_jobs_by_status(self, status: str, limit: int = 10) -> list:
+        """Get recent jobs filtered by last build status (SUCCESS or FAILURE)."""
+        try:
+            jobs_info = []
+            # Use direct API call to get jobs with build information
+            import httpx
+            # Try to get jobs without tree specification first to avoid server errors
+            api_url = f"{self.url}/api/json?tree=jobs[name,url,lastBuild[number,result,timestamp,duration],lastCompletedBuild[number,result,timestamp,duration]]"
+
+            response = httpx.get(api_url, auth=self.client._auth)
+            response.raise_for_status()
+            data = response.json()
+
+            all_jobs_data = data.get('jobs', [])
+
+
+            for job_data in all_jobs_data:
+                try:
+                    # Get the last completed build info
+                    last_build_data = job_data.get('lastCompletedBuild') or job_data.get('lastBuild')
+
+                    if last_build_data and last_build_data.get('result') == status.upper():
+                        try:
+                            # Create a simple build object for helper methods
+                            class SimpleBuild:
+                                def __init__(self, data, job_name, jenkins_url):
+                                    self.number = data.get('number')
+                                    self.result = data.get('result')
+                                    self.timestamp = data.get('timestamp')
+                                    self.duration = data.get('duration')
+                                    self.url = f"{jenkins_url}/job/{job_name}/{data.get('number', '')}/"
+
+                            last_build = SimpleBuild(last_build_data, job_data['name'], self.url) if last_build_data else None
+
+                            job_name = job_data['name']
+                            job_info = {
+                                'name': job_name,
+                                'url': job_data.get('url', f"{self.url}/job/{job_name}/"),
+                                'description': '',  # Not available in this API call
+                                'buildable': True,  # Assume buildable
+                                'last_build': {
+                                    'number': getattr(last_build, 'number', 'N/A') if last_build else 'N/A',
+                                    'status': status.upper(),
+                                    'url': getattr(last_build, 'url', f"{self.url}/job/{job_name}/{getattr(last_build, 'number', 'N/A')}/") if last_build else '',
+                                    'start_time': self._get_build_start_time(last_build) if last_build else 'N/A',
+                                    'duration': self._get_build_duration(last_build) if last_build else 'N/A',
+                                }
+                            }
+                            jobs_info.append(job_info)
+
+                            if len(jobs_info) >= limit:
+                                break
+                        except Exception as e:
+                            # Skip jobs that cause errors in processing
+                            continue
+
+                except Exception as e:
+                    # Skip jobs that cause errors
+                    continue
+
+            # Sort by last build number (most recent first)
+            jobs_info.sort(key=lambda j: j['last_build'].get('number', 0) if isinstance(j['last_build'], dict) else 0, reverse=True)
+            return jobs_info[:limit]
+
+        except Exception as e:
+            print(f"Error getting recent jobs: {e}", file=sys.stderr)
+            sys.exit(1)
+            return jobs_info[:limit]
+
+        except Exception as e:
+            print(f"Error getting recent jobs: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    def _get_build_status(self, build) -> str:
+        """Get build status from build object."""
+        try:
+            # Try different ways to get build status
+            if hasattr(build, 'result'):
+                result = build.result
+                if result is not None:
+                    return str(result).upper()
+            elif hasattr(build, 'status'):
+                return str(build.status).upper()
+
+            # Check if build is building
+            if hasattr(build, 'building') and build.building:
+                return "BUILDING"
+
+            # Default to UNKNOWN
+            return "UNKNOWN"
+        except:
+            return "UNKNOWN"
+
+    def _get_build_start_time(self, build) -> str:
+        """Get build start time from build object."""
+        try:
+            if hasattr(build, 'timestamp'):
+                import datetime
+                # Jenkins timestamp is in milliseconds
+                timestamp_ms = build.timestamp
+                dt = datetime.datetime.fromtimestamp(timestamp_ms / 1000)
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                return "Unknown"
+        except:
+            return "Unknown"
+
+    def _get_build_duration(self, build) -> str:
+        """Get build duration from build object."""
+        try:
+            if hasattr(build, 'duration'):
+                duration_ms = build.duration
+                if duration_ms == 0:
+                    # Build might still be running
+                    return "Still running"
+                else:
+                    # Convert milliseconds to human readable format
+                    total_seconds = duration_ms // 1000
+                    hours, remainder = divmod(total_seconds, 3600)
+                    minutes, seconds = divmod(remainder, 60)
+
+                    if hours > 0:
+                        return f"{hours}h {minutes}m {seconds}s"
+                    elif minutes > 0:
+                        return f"{minutes}m {seconds}s"
+                    else:
+                        return f"{seconds}s"
+            else:
+                return "Unknown"
+        except:
+            return "Unknown"
     
     def trigger_build(self, job_name: str, parameters: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """Trigger a build for a job."""
@@ -153,4 +340,202 @@ class JenkinsClient:
         except Exception as e:
             print(f"Error triggering build: {e}", file=sys.stderr)
             sys.exit(1)
+
+    def get_job_xml(self, job_name: str) -> str:
+        """Get job configuration in XML format."""
+        try:
+            job = self.client[job_name]
+            # Try to get XML config using api4jenkins method if available
+            if hasattr(job, 'config_xml'):
+                return job.config_xml()
+            elif hasattr(job, 'get_config_xml'):
+                return job.get_config_xml()
+            else:
+                # Fallback: use direct HTTP request to config.xml endpoint
+                config_url = f"{self.url}/job/{job_name}/config.xml"
+                import httpx
+                response = httpx.get(config_url, auth=self.client._auth)
+                response.raise_for_status()
+                return response.text
+        except Exception as e:
+            print(f"Error getting job XML: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    def create_job_from_xml(self, job_name: str, xml_content: str, force: bool = False) -> dict:
+        """Create or update job from XML configuration."""
+        try:
+            # Check if job already exists
+            job_exists = False
+            try:
+                self.client[job_name]
+                job_exists = True
+                print(f"Job '{job_name}' already exists.")
+            except KeyError:
+                job_exists = False
+
+            if job_exists and not force:
+                # Ask for confirmation
+                response = input(f"Do you want to update the existing job '{job_name}'? (y/N): ").strip().lower()
+                if response not in ['y', 'yes']:
+                    return {
+                        'status': 'cancelled',
+                        'message': 'Job creation cancelled by user'
+                    }
+
+            # Use direct HTTP requests for create/update operations
+            import httpx
+
+            if job_exists:
+                # Update existing job
+                url = f"{self.url}/job/{job_name}/config.xml"
+                response = httpx.post(url, content=xml_content, auth=self.client._auth)
+                response.raise_for_status()
+                action = 'updated'
+            else:
+                # Create new job
+                url = f"{self.url}/createItem"
+                params = {'name': job_name}
+                headers = {'Content-Type': 'application/xml'}
+                response = httpx.post(url, params=params, content=xml_content,
+                                    headers=headers, auth=self.client._auth)
+                response.raise_for_status()
+                action = 'created'
+
+            return {
+                'status': 'success',
+                'action': action,
+                'job_name': job_name,
+                'url': f"{self.url}/job/{job_name}/"
+            }
+
+        except Exception as e:
+            error_msg = str(e)
+            if '403' in error_msg or 'Forbidden' in error_msg:
+                print(f"Error: Permission denied. Make sure your Jenkins user has permission to create/update jobs.", file=sys.stderr)
+                print("Required permissions: Job/Create, Job/Update, Job/Configure", file=sys.stderr)
+            else:
+                print(f"Error creating/updating job: {e}", file=sys.stderr)
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
+    def get_build_logs(self, job_name: str, build_number: int) -> str:
+        """Get console output/logs from a specific build."""
+        try:
+            job = self.client[job_name]
+            build = job[build_number]
+
+            # Try to get console output using different methods
+            if hasattr(build, 'console'):
+                return build.console()
+            elif hasattr(build, 'get_console_output'):
+                return build.get_console_output()
+            else:
+                # Fallback: use direct HTTP request to consoleText endpoint
+                console_url = f"{self.url}/job/{job_name}/{build_number}/consoleText"
+                import httpx
+                response = httpx.get(console_url, auth=self.client._auth)
+                response.raise_for_status()
+                return response.text
+
+        except KeyError:
+            print(f"Error: Build {build_number} not found for job '{job_name}'", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error getting build logs: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    def delete_job(self, job_name: str, force: bool = False) -> dict:
+        """Delete a Jenkins job."""
+        import httpx
+
+        try:
+            # Check if job exists first
+            try:
+                job = self.client[job_name]
+                job_url = getattr(job, 'url', f"{self.url}/job/{job_name}/")
+                print(f"📋 Job found: {job_url}", file=sys.stderr)
+            except KeyError:
+                print(f"❌ Job '{job_name}' not found at {self.url}", file=sys.stderr)
+                return {
+                    'status': 'error',
+                    'error': f"Job '{job_name}' not found"
+                }
+
+            if not force:
+                # Ask for confirmation
+                response = input(f"Are you sure you want to delete job '{job_name}'? This action cannot be undone. (y/N): ").strip().lower()
+                if response not in ['y', 'yes']:
+                    return {
+                        'status': 'cancelled',
+                        'message': 'Job deletion cancelled by user'
+                    }
+
+            # Test basic authentication and connectivity first
+            print(f"🔍 Testing Jenkins connection and permissions...", file=sys.stderr)
+            test_url = f"{self.url}/api/json?tree=jobs[name]"
+            try:
+                test_response = httpx.get(test_url, auth=self.client._auth)
+                test_response.raise_for_status()
+                print(f"✅ Connection and basic authentication successful", file=sys.stderr)
+            except Exception as e:
+                print(f"❌ Connection or authentication failed: {e}", file=sys.stderr)
+                return {
+                    'status': 'error',
+                    'error': f"Connection or authentication failed: {e}"
+                }
+
+            # Try to get CSRF crumb if available (required by some Jenkins instances)
+            crumb = None
+            try:
+                crumb_url = f"{self.url}/crumbIssuer/api/json"
+                crumb_response = httpx.get(crumb_url, auth=self.client._auth)
+                if crumb_response.status_code == 200:
+                    crumb_data = crumb_response.json()
+                    crumb = crumb_data.get('crumb')
+                    print(f"🔒 CSRF protection detected, using crumb for authentication", file=sys.stderr)
+            except:
+                # CSRF crumb not required or not available, continue without it
+                pass
+
+            # Use direct HTTP request to delete job
+            delete_url = f"{self.url}/job/{job_name}/doDelete"
+
+            # Prepare headers and data
+            headers = {}
+            if crumb:
+                headers[crumb_data.get('crumbRequestField', 'Jenkins-Crumb')] = crumb
+
+            print(f"🗑️  Deleting job '{job_name}'...", file=sys.stderr)
+            response = httpx.post(delete_url, auth=self.client._auth, headers=headers)
+            response.raise_for_status()
+
+            return {
+                'status': 'success',
+                'job_name': job_name,
+                'message': f"Job '{job_name}' has been deleted successfully"
+            }
+
+        except Exception as e:
+            error_msg = str(e)
+            if '403' in error_msg or 'Forbidden' in error_msg:
+                print(f"❌ Permission denied. Cannot delete job '{job_name}'.", file=sys.stderr)
+                print(f"\n🔧 Troubleshooting steps:", file=sys.stderr)
+                print(f"1. Check Jenkins user permissions: Go to Jenkins → Manage Jenkins → Manage Users", file=sys.stderr)
+                print(f"2. Ensure your user has 'Job/Delete' permission", file=sys.stderr)
+                print(f"3. For Matrix Authorization: Check 'Delete Jobs' permission", file=sys.stderr)
+                print(f"4. For Role-Based Access: Ensure your role has 'Job' → 'Delete' permission", file=sys.stderr)
+                print(f"5. If using API token, ensure it's valid and has delete permissions", file=sys.stderr)
+                print(f"\n💡 Alternative solutions:", file=sys.stderr)
+                print(f"• Use Jenkins Web UI: {self.url}/job/{job_name} → Delete Job", file=sys.stderr)
+                print(f"• Manual API call: curl -X POST '{self.url}/job/{job_name}/doDelete' -u 'username:token'", file=sys.stderr)
+            elif '404' in error_msg or 'Not Found' in error_msg:
+                print(f"❌ Job '{job_name}' not found", file=sys.stderr)
+            else:
+                print(f"❌ Error deleting job: {e}", file=sys.stderr)
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
 

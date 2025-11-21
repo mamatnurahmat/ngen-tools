@@ -72,7 +72,16 @@ ngen-j check                    # Validate connection
 ngen-j --version               # Check version
 ngen-j jobs                     # List all jobs
 ngen-j job my-job               # Get job details
+ngen-j job --last-success       # Get last 10 successful jobs
+ngen-j job --last-failure       # Get last 10 failed jobs
 ngen-j build my-job             # Trigger build
+ngen-j build my-job --param REF_NAME=develop REF_TYPE=branch  # Build with parameters
+ngen-j build my-job --param=REF_NAME=develop --param=REF_TYPE=branch  # Alternative format
+ngen-j get-xml my-job           # Get job XML config
+ngen-j create my-job job.xml    # Create job from XML
+ngen-j create my-job job.xml --force  # Update existing job
+ngen-j delete my-job            # Delete job (with confirmation)
+ngen-j delete my-job --force    # Delete job without confirmation
 ```
 
 ### Jenkins API Management
@@ -108,10 +117,60 @@ ngen-j jobs
 ngen-j job <job-name>
 ```
 
+**Get last 10 successful jobs:**
+```bash
+ngen-j job --last-success
+```
+
+**Get last 10 failed jobs:**
+```bash
+ngen-j job --last-failure
+```
+
 **Trigger a build:**
 ```bash
-ngen-j build <job-name>
+ngen-j build <job-name> [--param KEY=VALUE ...] or [--param=KEY=VALUE ...]
 ```
+
+Options:
+- `--param KEY=VALUE` - Pass build parameters (can be used multiple times)
+- `--param=KEY=VALUE` - Alternative format for build parameters
+
+Examples:
+```bash
+ngen-j build my-job
+ngen-j build my-job --param REF_NAME=develop REF_TYPE=branch
+ngen-j build my-job --param=REF_NAME=develop --param=REF_TYPE=branch
+ngen-j build my-job --param REF_NAME=develop --param=REF_TYPE=branch --param DEPLOY_ENV=staging
+```
+
+**Get build console output:**
+```bash
+ngen-j log <job-name> <build-number>
+```
+
+**Get job XML configuration:**
+```bash
+ngen-j get-xml <job-name>
+```
+
+**Create or update job from XML:**
+```bash
+ngen-j create <job-name> <xml-file> [--force]
+```
+
+Options:
+- `--force` - Skip confirmation when updating existing job
+
+**Delete a job:**
+```bash
+ngen-j delete <job-name> [--force]
+```
+
+Options:
+- `--force` - Skip confirmation before deleting job
+
+**Note:** Requires Jenkins permissions: Job/Create, Job/Update, Job/Configure, Job/Delete
 
 ### Script Execution
 

@@ -1,0 +1,804 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job@1520.v56d65e3b_4566">
+  <actions>
+    <org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobAction plugin="pipeline-model-definition@2.2254.v2a_978de46f35"/>
+    <org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobPropertyTrackerAction plugin="pipeline-model-definition@2.2254.v2a_978de46f35">
+      <jobProperties/>
+      <triggers>
+        <string>org.jenkinsci.plugins.gwt.GenericTrigger</string>
+      </triggers>
+      <parameters>
+        <string>REF_TYPE</string>
+        <string>REF_NAME</string>
+      </parameters>
+      <options/>
+    </org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobPropertyTrackerAction>
+    <org.jenkinsci.plugins.workflow.multibranch.JobPropertyTrackerAction plugin="workflow-multibranch@806.vb_b_688f609ee9">
+      <jobPropertyDescriptors>
+        <string>org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty</string>
+      </jobPropertyDescriptors>
+    </org.jenkinsci.plugins.workflow.multibranch.JobPropertyTrackerAction>
+  </actions>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.throttleconcurrents.ThrottleJobProperty plugin="throttle-concurrents@2.16">
+      <maxConcurrentPerNode>0</maxConcurrentPerNode>
+      <maxConcurrentTotal>0</maxConcurrentTotal>
+      <categories class="java.util.concurrent.CopyOnWriteArrayList"/>
+      <throttleEnabled>false</throttleEnabled>
+      <throttleOption>project</throttleOption>
+      <limitOneJobWithMatchingParams>false</limitOneJobWithMatchingParams>
+      <paramsToUseForLimit></paramsToUseForLimit>
+      <configVersion>1</configVersion>
+    </hudson.plugins.throttleconcurrents.ThrottleJobProperty>
+    <org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty>
+      <triggers>
+        <hudson.triggers.SCMTrigger>
+          <spec>H/3 * * * *</spec>
+          <ignorePostCommitHooks>false</ignorePostCommitHooks>
+        </hudson.triggers.SCMTrigger>
+        <org.jenkinsci.plugins.gwt.GenericTrigger plugin="generic-webhook-trigger@2.3.1">
+          <spec></spec>
+          <genericVariables>
+            <org.jenkinsci.plugins.gwt.GenericVariable>
+              <key>ref</key>
+              <value>$.push.changes[0].new.name</value>
+            </org.jenkinsci.plugins.gwt.GenericVariable>
+            <org.jenkinsci.plugins.gwt.GenericVariable>
+              <key>type</key>
+              <value>$.push.changes[0].new.type</value>
+            </org.jenkinsci.plugins.gwt.GenericVariable>
+            <org.jenkinsci.plugins.gwt.GenericVariable>
+              <key>repo</key>
+              <value>$.repository.name</value>
+            </org.jenkinsci.plugins.gwt.GenericVariable>
+          </genericVariables>
+          <regexpFilterText>${type}:${ref}</regexpFilterText>
+          <regexpFilterExpression>^(branch:(develop|development|staging)|tag:v.*)$</regexpFilterExpression>
+          <printPostContent>true</printPostContent>
+          <printContributedVariables>true</printContributedVariables>
+          <token>saas-fe-webadmin</token>
+          <silentResponse>false</silentResponse>
+          <overrideQuietPeriod>false</overrideQuietPeriod>
+          <shouldNotFlattern>false</shouldNotFlattern>
+          <allowSeveralTriggersPerBuild>false</allowSeveralTriggersPerBuild>
+        </org.jenkinsci.plugins.gwt.GenericTrigger>
+      </triggers>
+    </org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>REF_NAME</name>
+          <description>Branch or Tag Name</description>
+          <defaultValue>develop</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.ChoiceParameterDefinition>
+          <name>REF_TYPE</name>
+          <description>Type (branch or tag)</description>
+          <choices>
+            <string>branch</string>
+            <string>tag</string>
+          </choices>
+        </hudson.model.ChoiceParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@4106.v7a_8a_8176d450">
+    <script>// properties([pipelineTriggers([pollSCM(&apos;H/3 * * * *&apos;)])])
+
+def FAILED_STAGE
+def imageReady = false
+def teamsNotification(status, message, gitInfo = [:]) {
+    def themeColor = &apos;808080&apos;
+    switch (status) {
+        case &apos;SUCCESS&apos;: themeColor = &apos;00FF00&apos;; break
+        case &apos;FAILURE&apos;: themeColor = &apos;FF0000&apos;; break
+        case &apos;STARTED&apos;: themeColor = &apos;0000FF&apos;; break
+        case &apos;WAITING_APPROVE&apos;: themeColor = &apos;FFFF00&apos;; break        
+    }
+
+    withCredentials([string(credentialsId: &apos;TEAMS_WEBHOOK_URL&apos;, variable: &apos;WEBHOOK_URL&apos;)]) {
+        writeFile file: &apos;teams_payload.json&apos;, text: &quot;&quot;&quot;{
+            &quot;@type&quot;: &quot;MessageCard&quot;,
+            &quot;@context&quot;: &quot;http://schema.org/extensions&quot;,
+            &quot;summary&quot;: &quot;Build Notification&quot;,
+            &quot;themeColor&quot;: &quot;${themeColor}&quot;,
+            &quot;title&quot;: &quot;Jenkins Build ${status}&quot;,
+            &quot;sections&quot;: [{
+                &quot;activityTitle&quot;: &quot;${message}&quot;,
+                &quot;activitySubtitle&quot;: &quot;Job Name: ${env.JOB_NAME}&quot;,
+                &quot;facts&quot;: [
+                    {&quot;name&quot;: &quot;Build Number&quot;, &quot;value&quot;: &quot;${env.BUILD_NUMBER}&quot;},
+                    {&quot;name&quot;: &quot;Branch&quot;, &quot;value&quot;: &quot;${env.GIT_BRANCH}&quot;},
+                    {&quot;name&quot;: &quot;VERSION&quot;, &quot;value&quot;: &quot;${env.TAG_VERSION ?: &apos;N/A&apos;}&quot;},
+                    {&quot;name&quot;: &quot;Commit Message&quot;, &quot;value&quot;: &quot;${env.GIT_MESSAGE ?: &apos;N/A&apos;}&quot;},
+                    {&quot;name&quot;: &quot;Commit Date&quot;, &quot;value&quot;: &quot;${env.GIT_DATE ?: &apos;N/A&apos;}&quot;},
+                    {&quot;name&quot;: &quot;Author&quot;, &quot;value&quot;: &quot;${env.GIT_AUTHOR ?: &apos;N/A&apos;}&quot;},
+                    {&quot;name&quot;: &quot;Author Email&quot;, &quot;value&quot;: &quot;${env.GIT_EMAIL ?: &apos;N/A&apos;}&quot;}
+                ],
+                &quot;potentialAction&quot;: [{
+                    &quot;@type&quot;: &quot;OpenUri&quot;,
+                    &quot;name&quot;: &quot;View Job&quot;,
+                    &quot;targets&quot;: [{&quot;os&quot;: &quot;default&quot;, &quot;uri&quot;: &quot;${env.BUILD_URL}&quot;}]
+                }]
+            }]
+        }&quot;&quot;&quot;
+
+        sh &quot;curl -H &apos;Content-Type: application/json&apos; --data @teams_payload.json \&quot;\$WEBHOOK_URL\&quot;&quot;
+    }
+}
+
+
+pipeline {
+    agent any
+
+    environment {
+        REGISTRY_URL = &quot;http://193.1.1.3:5000&quot;
+    }
+
+    parameters {
+        string(name: &apos;REF_NAME&apos;, defaultValue: &apos;develop&apos;, description: &apos;Branch or Tag Name&apos;)
+        choice(name: &apos;REF_TYPE&apos;, choices: [&apos;branch&apos;, &apos;tag&apos;], description: &apos;Type (branch or tag)&apos;)
+    }
+
+    triggers {
+        GenericTrigger(
+            genericVariables: [
+                [key: &apos;ref&apos;, value: &apos;$.push.changes[0].new.name&apos;],
+                [key: &apos;type&apos;, value: &apos;$.push.changes[0].new.type&apos;],
+                [key: &apos;repo&apos;, value: &apos;$.repository.name&apos;]
+            ],
+            token: &quot;${env.JOB_NAME}&quot;,
+            printContributedVariables: true,
+            printPostContent: true,
+            regexpFilterExpression: &apos;^(branch:(develop|development|staging)|tag:v.*)$&apos;,
+            regexpFilterText: &apos;${type}:${ref}&apos;
+        )
+    }
+
+    stages {
+        stage(&apos;Check Branch or Tag&apos;) {
+            steps {
+                script {
+                
+                    env.FAILED_STAGE = &quot;${env.DISPLAY_NAME}&quot;
+                    echo &quot;Running Build &amp; Deploy for ${env.ref} (${env.type})&quot;
+                    
+                    echo &quot;DEBUG: Webhook REF = &apos;${env.ref}&apos;, Webhook TYPE = &apos;${env.type}&apos;, Webhook REPO = &apos;${env.repo}&apos;&quot;
+                    echo &quot;DEBUG: Manual REF = &apos;${params.REF_NAME}&apos;, Manual TYPE = &apos;${params.REF_TYPE}&apos;&quot;
+
+                    def ref = (env.ref &amp;&amp; env.ref != &apos;/usr/share/jenkins/ref&apos;) ? env.ref.trim() : params.REF_NAME.trim()
+                    def type = (env.type &amp;&amp; env.type != &apos;/usr/share/jenkins/type&apos;) ? env.type.trim() : params.REF_TYPE.trim()
+                    def repo = (env.repo &amp;&amp; env.repo != &apos;/usr/share/jenkins/repo&apos;) ? env.repo.trim() : env.JOB_NAME.tokenize(&apos;/&apos;)[0]
+
+                    echo &quot;Final REF_NAME=${ref}, Final REF_TYPE=${type}, Final REPO=${repo}&quot;
+
+                    // Validasi branch/tag hanya jika tidak kosong
+                    if (!ref || !type) {
+                        error &quot;ERROR: Branch/tag tidak valid atau tidak terdeteksi.&quot;
+                    }
+
+                    // Branch &amp; Tag yang diizinkan
+                    def allowedBranches = [&apos;develop&apos;, &apos;development&apos;, &apos;staging&apos;]
+                    def isBranchAllowed = (type == &apos;branch&apos; &amp;&amp; allowedBranches.contains(ref))
+                    def isTagAllowed = (type == &apos;tag&apos; &amp;&amp; ref.startsWith(&apos;v&apos;))
+
+                    if (isBranchAllowed || isTagAllowed) {
+                        echo &quot; Build akan dijalankan untuk ${ref} (${type})&quot;
+                        env.ref = ref
+                        env.type = type
+                        env.repo = repo
+                    } else {
+                        error &quot;Branch/tag &apos;${ref}&apos; tidak diizinkan untuk build.&quot;
+                    }
+                    currentBuild.displayName = &quot;${env.repo}-${env.ref}&quot;                    
+                    teamsNotification(&apos;STARTED&apos;, &quot;Job ${env.JOB_NAME} #${env.BUILD_NUMBER} STARTED. [View Job](${env.BUILD_URL})&quot;)
+
+                }
+            }
+        }
+
+        
+        
+        stage(&apos;Check Image Ready&apos;) {
+            steps {
+                script {
+                    env.FAILED_STAGE = &quot;${env.DISPLAY_NAME}&quot;
+                    echo &quot;Running Build &amp; Deploy for ${env.ref} (${env.type})&quot;
+                    
+                    if (!env.repo || !env.ref) {
+                        error &quot;Parameter &apos;repo&apos; atau &apos;ref&apos; tidak tersedia dari payload webhook.&quot;
+                    }
+
+                    echo &quot;Memeriksa image untuk repo: ${env.repo}, ref: ${env.ref}&quot;
+
+                    def url = &quot;${REGISTRY_URL}/v1/image/fe?repo=${env.repo}&amp;refs=${env.ref}&quot;
+                    def response = sh(
+                        script: &quot;&quot;&quot;curl -s -X GET &quot;${url}&quot; -H &quot;accept: application/json&quot; &quot;&quot;&quot;,
+                        returnStdout: true
+                    ).trim()
+
+                    def json
+                    try {
+                        json = new groovy.json.JsonSlurperClassic().parseText(response)
+                    } catch (e) {
+                        error &quot;Gagal parsing JSON: ${e.message}\nRespon: ${response}&quot;
+                    }
+
+                    if (json.ready == true) {
+                        echo &quot; Image is ready.&quot;
+                        env.IMAGE_READY = &quot;true&quot;
+                        env.READY_IMAGE = json.image ?: &quot;&quot;
+                    } else {
+                        echo &quot;Ã&#x82;Â  Image not ready.&quot;
+                        env.IMAGE_READY = &quot;false&quot;
+                    }
+                }
+            }
+        }
+
+
+stage(&apos;Fetch Build Metadata&apos;) {
+    steps {
+        script {
+            env.FAILED_STAGE = &quot;${env.DISPLAY_NAME}&quot;
+            echo &quot;Running Build &amp; Deploy for ${env.ref} (${env.type})&quot;
+            
+            
+            def response = sh(
+                script: &quot;&quot;&quot;curl -s -X GET &quot;${REGISTRY_URL}/v1/file?repo=${env.repo}&amp;refs=${env.ref}&amp;path=cicd%2Fcicd.json&quot; -H &quot;accept: application/json&quot; &quot;&quot;&quot;,
+                returnStdout: true
+            ).trim()
+
+            def json = new groovy.json.JsonSlurperClassic().parseText(response)
+
+            json.each { key, value -&gt;
+                // Hanya isi ke env jika key-nya huruf besar semua
+                if (key == key.toUpperCase()) {
+                    env.&quot;${key}&quot; = value.toString()
+                }
+            }
+        }
+    }
+}
+
+
+        stage(&apos;CI Build &amp; Push&apos;) {
+            when {
+                expression { env.IMAGE_READY == &quot;false&quot; }
+            }
+            steps {
+                script {
+                    
+                    env.FAILED_STAGE = &quot;${env.DISPLAY_NAME}&quot;
+                    echo &quot;Running Build &amp; Deploy for ${env.ref} (${env.type})&quot;
+                    
+                    
+                    echo &quot;Build karena image belum tersedia.&quot;
+                    build job: &quot;devops-ci-web&quot;,
+                        parameters: [
+                            string(name: &apos;repo&apos;, value: env.repo),
+                            string(name: &apos;ref&apos;, value: env.ref)
+                        ],
+                        wait: true
+
+                    def url = &quot;${REGISTRY_URL}/v1/image/fe?repo=${env.repo}&amp;refs=${env.ref}&quot;
+                    def response = sh(
+                        script: &quot;&quot;&quot;curl -s -X GET &quot;${url}&quot; -H &quot;accept: application/json&quot; &quot;&quot;&quot;,
+                        returnStdout: true
+                    ).trim()
+
+                    def json
+                    try {
+                        json = new groovy.json.JsonSlurperClassic().parseText(response)
+                    } catch (e) {
+                        error &quot;Gagal parsing JSON: ${e.message}\nRespon: ${response}&quot;
+                    }
+
+                    if (json.ready == true) {
+                        echo &quot; Image is ready.&quot;
+                        env.IMAGE_READY = &quot;true&quot;
+                        env.READY_IMAGE = json.image ?: &quot;&quot;
+                    } else {
+                        echo &quot;Image not ready.&quot;
+                        env.IMAGE_READY = &quot;false&quot;
+                    }                        
+                        
+                        
+                }
+            }
+        }
+
+        stage(&apos;CVES STEP&apos;) {
+            when {
+                expression { env.IMAGE_READY == &quot;true&quot; }
+            }
+            steps {
+                script {
+
+                    env.FAILED_STAGE = &quot;${env.DISPLAY_NAME}&quot;
+                    echo &quot;Running Build &amp; Deploy for ${env.ref} (${env.type})&quot;
+                    
+                    echo &quot;Menjalankan CVES job untuk ${env.repo}&quot;
+                    build job: &quot;cves-job&quot;,
+                        parameters: [
+                            string(name: &apos;repo&apos;, value: env.repo),
+                            string(name: &apos;refs&apos;, value: env.ref)
+                        ],
+                        wait: false
+                }
+            }
+        }
+
+
+        stage(&apos;DEPLOY WEB&apos;) {
+            when {
+                allOf {
+                    expression { env.IMAGE_READY == &quot;true&quot; }
+                    expression { env.SKIP_DEPLOY != &quot;true&quot; }
+                }
+            }
+            steps {
+
+        script {
+
+                // Menentukan ENV berdasarkan refs dan type
+                if (env.type == &apos;branch&apos; &amp;&amp; env.ref == &quot;development&quot;) {
+                    env.ENV = env.ref
+                    env.HOST = env.DEVHOST 
+                    env.DOMAIN = env.DEVDOMAIN 
+                } else if (env.type == &apos;branch&apos; &amp;&amp; env.ref == &quot;staging&quot;) {
+                    env.ENV = env.ref
+                    env.HOST = env.STAHOST 
+                    env.DOMAIN = env.STADOMAIN 
+                } else if (env.type == &apos;tag&apos; &amp;&amp; env.ref.startsWith(&apos;v&apos;)) {
+                    env.ENV = &quot;production&quot;
+                    env.HOST = env.PROHOST 
+                    env.DOMAIN = env.PRODOMAIN 
+                    
+                } else {
+                    env.ENV = &quot;unknown&quot;
+                }
+
+                // Format IMAGE menjadi REGISTRY/IMAGE:TAG_VERSION
+                // Menampilkan hasil ekstraksi
+                echo &quot;IMAGE         : ${env.IMAGE}&quot;
+                echo &quot;PORT          : ${env.PORT}&quot;
+                echo &quot;HOST            : ${env.HOST}&quot;                
+                echo &quot;DOMAIN    : ${env.DOMAIN}&quot;
+                echo &quot;IMAGE_VERSION : ${env.READY_IMAGE}&quot;                
+
+
+            if (env.type == &apos;branch&apos; &amp;&amp; (env.ref == &apos;development&apos; || env.ref == &apos;staging&apos;)) {
+                echo &quot;Ã¢Â&#x9c;Â&#x85; Branch ${env.ref} meets deployment criteria. Proceeding with deployment...&quot;
+
+                sh label: &quot;${env.STAGE_NAME}&quot;, script: &quot;&quot;&quot;
+echo &quot;=======================================&quot;;
+echo &quot; Ã°Â&#x9f;Â&#x9a;Â&#x80; DEPLOY WEB........................&quot;;
+echo &quot;=======================================&quot;;
+ssh devops@${env.HOST} &quot;cat ${env.JOB_NAME}/docker-compose.yaml&quot; /dev/null 2&gt;&amp;1 &gt; docker-compose.yaml
+yq eval &apos;.services.&quot;&apos;&quot;${env.JOB_NAME}&quot;&apos;&quot;.&quot;image&quot; = &quot;&apos;&quot;${env.READY_IMAGE}&quot;&apos;&quot;&apos; -i &quot;docker-compose.yaml&quot;
+scp docker-compose.yaml devops@${env.HOST}:~/${env.JOB_NAME}/docker-compose.yaml
+ssh devops@${env.HOST} &lt;&lt; EOF1
+cat ${env.JOB_NAME}/docker-compose.yaml
+docker compose -f ${env.JOB_NAME}/docker-compose.yaml pull
+docker compose -f ${env.JOB_NAME}/docker-compose.yaml up -d --force-recreate
+docker compose -f ${env.JOB_NAME}/docker-compose.yaml config
+EOF1
+
+                &quot;&quot;&quot;
+            } else {
+                echo &quot;Ã¢Â&#x9a;Â Ã¯Â¸Â&#x8f; Skipping deployment: Only &apos;development&apos; and &apos;staging&apos; branches are allowed.&quot;
+            }
+
+
+
+
+}
+
+
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo &quot;Build gagal untuk ${env.ref} (${env.type})&quot;
+            teamsNotification(&apos;FAILURE&apos;, &quot;STEP: ${FAILED_STAGE} - Job ${env.JOB_NAME} #${env.BUILD_NUMBER} FAILED. [View Job](${env.BUILD_URL})&quot;)
+        }
+        success {
+            echo &quot;Build berhasil untuk ${env.ref} (${env.type})&quot;
+                teamsNotification(&apos;SUCCESS&apos;, &quot;Job ${env.JOB_NAME} #${env.BUILD_NUMBER} SUCCESS. [View Job](${env.BUILD_URL})&quot;)            
+        }
+    }
+}
+
+// properties([pipelineTriggers([pollSCM(&apos;H/3 * * * *&apos;)])])
+
+// def FAILED_STAGE
+
+// def teamsNotification(status, message, gitInfo = [:]) {
+//     def themeColor = &apos;808080&apos;
+//     switch (status) {
+//         case &apos;SUCCESS&apos;: themeColor = &apos;00FF00&apos;; break
+//         case &apos;FAILURE&apos;: themeColor = &apos;FF0000&apos;; break
+//         case &apos;STARTED&apos;: themeColor = &apos;0000FF&apos;; break
+//         case &apos;WAITING_APPROVE&apos;: themeColor = &apos;FFFF00&apos;; break        
+//     }
+
+//     withCredentials([string(credentialsId: &apos;TEAMS_WEBHOOK_URL&apos;, variable: &apos;WEBHOOK_URL&apos;)]) {
+//         writeFile file: &apos;teams_payload.json&apos;, text: &quot;&quot;&quot;{
+//             &quot;@type&quot;: &quot;MessageCard&quot;,
+//             &quot;@context&quot;: &quot;http://schema.org/extensions&quot;,
+//             &quot;summary&quot;: &quot;Build Notification&quot;,
+//             &quot;themeColor&quot;: &quot;${themeColor}&quot;,
+//             &quot;title&quot;: &quot;Jenkins Build ${status}&quot;,
+//             &quot;sections&quot;: [{
+//                 &quot;activityTitle&quot;: &quot;${message}&quot;,
+//                 &quot;activitySubtitle&quot;: &quot;Job Name: ${env.JOB_NAME}&quot;,
+//                 &quot;facts&quot;: [
+//                     {&quot;name&quot;: &quot;Build Number&quot;, &quot;value&quot;: &quot;${env.BUILD_NUMBER}&quot;},
+//                     {&quot;name&quot;: &quot;Branch&quot;, &quot;value&quot;: &quot;${env.GIT_BRANCH}&quot;},
+//                     {&quot;name&quot;: &quot;VERSION&quot;, &quot;value&quot;: &quot;${env.TAG_VERSION ?: &apos;N/A&apos;}&quot;},
+//                     {&quot;name&quot;: &quot;Commit Message&quot;, &quot;value&quot;: &quot;${env.GIT_MESSAGE ?: &apos;N/A&apos;}&quot;},
+//                     {&quot;name&quot;: &quot;Commit Date&quot;, &quot;value&quot;: &quot;${env.GIT_DATE ?: &apos;N/A&apos;}&quot;},
+//                     {&quot;name&quot;: &quot;Author&quot;, &quot;value&quot;: &quot;${env.GIT_AUTHOR ?: &apos;N/A&apos;}&quot;},
+//                     {&quot;name&quot;: &quot;Author Email&quot;, &quot;value&quot;: &quot;${env.GIT_EMAIL ?: &apos;N/A&apos;}&quot;}
+//                 ],
+//                 &quot;potentialAction&quot;: [{
+//                     &quot;@type&quot;: &quot;OpenUri&quot;,
+//                     &quot;name&quot;: &quot;View Job&quot;,
+//                     &quot;targets&quot;: [{&quot;os&quot;: &quot;default&quot;, &quot;uri&quot;: &quot;${env.BUILD_URL}&quot;}]
+//                 }]
+//             }]
+//         }&quot;&quot;&quot;
+
+//         sh &quot;curl -H &apos;Content-Type: application/json&apos; --data @teams_payload.json \&quot;\$WEBHOOK_URL\&quot;&quot;
+//     }
+// }
+
+// pipeline {
+//     agent any
+
+//     parameters {
+//         string(name: &apos;REF_NAME&apos;, defaultValue: &apos;development&apos;, description: &apos;Branch or Tag Name&apos;)
+//         choice(name: &apos;REF_TYPE&apos;, choices: [&apos;branch&apos;, &apos;tag&apos;], description: &apos;Type (branch or tag)&apos;)
+//     }
+
+//     environment {
+//         BITBUCKET_URL = &quot;https://bitbucket.org/loyaltoid/${env.JOB_NAME}.git&quot;
+//         CREDENTIALS_ID = &apos;newrahmat-bb&apos;
+//         CPU_PERIOD = &apos;100000&apos;
+//     }
+
+//     triggers {
+//         GenericTrigger(
+//             genericVariables: [
+//                 [key: &apos;ref&apos;, value: &apos;$.push.changes[0].new.name&apos;],
+//                 [key: &apos;type&apos;, value: &apos;$.push.changes[0].new.type&apos;]
+//             ],
+//             token: &quot;bitbucket-webhook-${env.JOB_NAME}&quot;,
+//             printContributedVariables: true,
+//             printPostContent: true
+//         )
+//     }
+
+//     stages {
+//         stage(&apos;Check Branch or Tag&apos;) {
+//             steps {
+//                 script {
+//                     // Gunakan nilai dari webhook atau parameterized build
+//                     def ref = params.REF_NAME?.trim() ?: env.ref
+//                     def type = params.REF_TYPE?.trim() ?: env.type
+
+//                     echo &quot;DEBUG: REF_NAME=${ref}, REF_TYPE=${type}&quot;
+
+//                     FAILED_STAGE = env.STAGE_NAME
+
+
+//                     // Cek apakah nilainya kosong
+//                     if (!ref || !type) {
+//                         error &quot;Ã¢Â&#x9d;Â&#x8c; Branch/tag tidak ditentukan dengan benar.&quot;
+//                     }
+
+//                     // Branch &amp; Tag yang diizinkan
+//                     def allowedBranches = [&apos;develop&apos;, &apos;development&apos;, &apos;staging&apos;]
+//                     def isBranchAllowed = allowedBranches.contains(ref)
+//                     def isTagAllowed = (type == &apos;tag&apos; &amp;&amp; ref.startsWith(&apos;v&apos;))
+
+//                     if (isBranchAllowed || isTagAllowed) {
+//                         echo &quot;Ã¢Â&#x9c;Â&#x85; Build triggered by ${ref} (${type})&quot;
+//                         env.ref = ref
+//                         env.type = type
+//                     } else {
+//                         error &quot;Ã¢Â&#x9d;Â&#x8c; Branch/tag ${ref} tidak diizinkan untuk memicu build.&quot;
+//                     }
+//                 }
+//             }
+//         }
+
+//         stage(&apos;Checkout Code&apos;) {
+//             steps {
+//                 script {
+
+//                     FAILED_STAGE = env.STAGE_NAME
+
+//                     checkout([
+//                         $class: &apos;GitSCM&apos;,
+//                         branches: [[name: &quot;*/${env.ref}&quot;]],
+//                         userRemoteConfigs: [[
+//                             url: env.BITBUCKET_URL,
+//                             credentialsId: env.CREDENTIALS_ID
+//                         ]]
+//                     ])
+
+// // 
+
+//                     def commitMessage = sh(script: &quot;git log -1 --pretty=%B&quot;, returnStdout: true).trim()
+//                     def hasTag = sh(script: &quot;git tag --points-at HEAD&quot;, returnStdout: true).trim()
+
+//                     echo &quot;REF: ${env.ref}&quot;
+//                     echo &quot;TYPE: ${env.type}&quot;
+//                     echo &quot;Commit Message: ${commitMessage}&quot;
+//                     echo &quot;Tags: ${hasTag}&quot;
+// // handle branch master tanpa tag
+//                     if (ref == &apos;master&apos; &amp;&amp; hasTag == &apos;&apos;) {
+//                         error(&quot;Skipping build: Master branch requires a tagged commit&quot;)
+//                     }
+
+//                     def gitShortCommit = sh(script: &quot;git rev-parse --short HEAD&quot;, returnStdout: true).trim()
+//                     def gitTag = sh(script: &quot;git tag --points-at HEAD&quot;, returnStdout: true).trim()
+//                     // env.GIT_BRANCH = branch
+
+//                     if (env.type == &apos;tag&apos;) {
+//                         env.tagVersion = gitTag
+//                         // env.REFS = gitTag
+//                     } else {
+//                         env.tagVersion = gitShortCommit
+//                         // env.REFS = branch
+                        
+//                     }
+
+                    
+//                     env.GIT_MESSAGE = sh(script: &quot;git log -1 --pretty=%s&quot;, returnStdout: true).trim()
+//                     env.GIT_DATE = sh(script: &quot;git log -1 --pretty=%ci&quot;, returnStdout: true).trim()
+//                     env.GIT_AUTHOR = sh(script: &quot;git log -1 --pretty=%an&quot;, returnStdout: true).trim()
+//                     env.GIT_EMAIL = sh(script: &quot;git log -1 --pretty=%ae&quot;, returnStdout: true).trim()
+//                     env.DISPLAY_NAME = &quot;${env.ref}-${env.JOB_NAME}-${env.tagVersion}&quot;
+
+//                     echo &quot;Message: ${env.GIT_MESSAGE}&quot;
+//                     echo &quot;Date: ${env.GIT_DATE}&quot;
+//                     echo &quot;Author: ${env.GIT_AUTHOR}&quot;
+//                     echo &quot;Email: ${env.GIT_EMAIL}&quot;
+//                     echo &quot;DISPLAY NAME: ${env.DISPLAY_NAME}&quot;
+
+
+// // 
+
+//                 }
+//             }
+//         }
+
+// stage(&apos;Prepare&apos;) {
+//     steps {
+//         script {
+//             // FAILED_STAGE = env.STAGE_NAME + &quot;.-.&quot; + env.ref + &quot;.-.&quot; + env.tagVersion
+//             // echo &quot;${env.REFS}&quot;                    
+//           env.FAILED_STAGE = &quot;${env.DISPLAY_NAME}&quot;
+
+//             echo &quot;Prepare project...&quot;
+            
+//             currentBuild.displayName = &quot;${env.DISPLAY_NAME}&quot;  
+
+//             try {
+//                 echo &quot;Building project...&quot;
+                
+//                 // Set failed stage tracking
+//                 // env.FAILED_STAGE = &quot;${env.DISPLAY}&quot;
+                
+//                 // Menampilkan refs (branch atau tag)
+//                 // echo &quot;Refs: ${env.REFS}&quot;
+
+//                 // Pastikan file cicd.json ada sebelum diproses
+//                 if (!fileExists(&apos;cicd/cicd.json&apos;)) {
+//                     error &quot;Error: File cicd/cicd.json tidak ditemukan!&quot;
+//                 }
+
+//                 // Pastikan JSON valid sebelum dijalankan
+//                 sh &apos;jq empty cicd/cicd.json &gt;/dev/null 2&gt;&amp;1 || { echo &quot;Error: File cicd/cicd.json tidak valid JSON!&quot;; exit 1; }&apos;
+
+//                 // Ekstrak variabel dari JSON dan simpan sebagai variabel global di `env`
+//                 // env.PROJECT = sh(script: &quot;jq -r &apos;.PROJECT&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+//                 env.IMAGE = sh(script: &quot;jq -r &apos;.IMAGE&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+//                 // env.DEPLOYMENT = sh(script: &quot;jq -r &apos;.DEPLOYMENT&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+//                 env.PORT = sh(script: &quot;jq -r &apos;.PORT&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+//                 // env.PORT2 = sh(script: &quot;jq -r &apos;.PORT2&apos; cicd/cicd.json&quot;, returnStdout: true).trim()                
+//                 // env.NODETYPE = sh(script: &quot;jq -r &apos;.NODETYPE&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+//                 env.DEVDOMAIN = sh(script: &quot;jq -r &apos;.DEVDOMAIN&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+//                 env.STADOMAIN = sh(script: &quot;jq -r &apos;.STADOMAIN&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+//                 env.PRODOMAIN = sh(script: &quot;jq -r &apos;.PRODOMAIN&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+
+//                 env.DEVHOST = sh(script: &quot;jq -r &apos;.DEVHOST&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+//                 env.STAHOST = sh(script: &quot;jq -r &apos;.DEVHOST&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+//                 env.PROHOST = sh(script: &quot;jq -r &apos;.DEVHOST&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+
+
+//                 // Default REGISTRY jika tidak ada di JSON
+//                 env.REGISTRY = sh(script: &quot;jq -r &apos;.REGISTRY // \&quot;loyaltolpi\&quot;&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+//                 env.REGISTRY01 = sh(script: &quot;jq -r &apos;.REGISTRY // \&quot;https://registry01.loyalto.id/qoin\&quot;&apos; cicd/cicd.json&quot;, returnStdout: true).trim()
+
+//                 // Menentukan ENV berdasarkan refs dan type
+//                 if (env.type == &apos;branch&apos; &amp;&amp; env.ref == &quot;development&quot;) {
+//                     env.ENV = env.ref
+//                     env.HOST = env.DEVHOST 
+//                     env.DOMAIN = env.DEVDOMAIN 
+//                 } else if (env.type == &apos;branch&apos; &amp;&amp; env.ref == &quot;staging&quot;) {
+//                     env.ENV = env.ref
+//                     env.HOST = env.STAHOST 
+//                     env.DOMAIN = env.STADOMAIN 
+//                 } else if (env.type == &apos;tag&apos; &amp;&amp; env.ref.startsWith(&apos;v&apos;)) {
+//                     env.ENV = &quot;production&quot;
+//                     env.HOST = env.PROHOST 
+//                     env.DOMAIN = env.PRODOMAIN 
+                    
+//                 } else {
+//                     env.ENV = &quot;unknown&quot;
+//                 }
+
+//                 // Menentukan NS
+//                 // env.NS = &quot;${env.ENV}-${env.PROJECT}&quot;
+
+                
+//                 // // Validasi apakah variabel IMAGE sudah terisi
+//                 // if (!env.IMAGE?.trim()) {
+//                 //     error &quot;Error: Variabel IMAGE dari cicd.json tidak ditemukan atau kosong!&quot;
+//                 // }
+
+
+//                 // Format IMAGE menjadi REGISTRY/IMAGE:TAG_VERSION
+//                 env.IMAGE_VERSION = &quot;${env.REGISTRY}/${env.IMAGE}:${env.tagVersion}&quot;
+//                 // Menampilkan hasil ekstraksi
+//                 // echo &quot;PROJECT       : ${env.PROJECT}&quot;
+//                 echo &quot;IMAGE         : ${env.IMAGE}&quot;
+//                 echo &quot;PORT          : ${env.PORT}&quot;
+//                 // echo &quot;NODETYPE      : ${env.NODETYPE}&quot;
+//                 echo &quot;HOST            : ${env.HOST}&quot;                
+//                 echo &quot;DOMAIN    : ${env.DOMAIN}&quot;
+//                 echo &quot;IMAGE_VERSION : ${env.IMAGE_VERSION}&quot;                
+
+//             } catch (Exception err) {
+//                 echo &quot;Error: ${err}&quot;
+//                 currentBuild.result = &apos;FAILURE&apos;
+//                 throw err
+//             }
+//         }
+//     }
+// }
+
+
+// // stage(&apos;CI STEP&apos;) {
+// //     steps {
+// //         script {
+// //             env.FAILED_STAGE = &quot;${env.DISPLAY_NAME}&quot;
+// //             echo &quot;Ã°Â&#x9f;Â&#x9a;Â&#x80; Running Build &amp; Deploy for ${env.ref} (${env.type})&quot;
+
+// //             withCredentials([string(credentialsId: &apos;AUTH_SECRET&apos;, variable: &apos;AUTH&apos;)]) {
+// //                 sh label: &quot;${env.STAGE_NAME}&quot;, script: &quot;&quot;&quot;
+// //                 docker run -t --memory=&apos;512m&apos; --cpus=&apos;1.5&apos;-e AUTH=&quot;$AUTH&quot; \
+// //                     -v //var/run/docker.sock:/var/run/docker.sock:rw \
+// //                     -w /play newrahmat/byoi:devops-ci-1.0.1 \
+// //                     /bin/bash -c &apos;clone ${env.JOB_NAME} ${env.ref} &amp;&amp; cd ${env.JOB_NAME} &amp;&amp; devops-ci-py ${env.ref}&apos;
+// //                 &quot;&quot;&quot;
+// //             }
+// //         }
+// //     }
+// // }
+
+
+// stage(&apos;CI STEP&apos;) {
+//     steps {
+//         script {
+//             env.FAILED_STAGE = &quot;${env.DISPLAY_NAME}&quot;
+//             echo &quot;Ã°Â&#x9f;Â&#x9a;Â&#x80; Running Build &amp; Deploy for ${env.ref} (${env.type})&quot;
+
+//             withCredentials([string(credentialsId: &apos;AUTH_SECRET&apos;, variable: &apos;AUTH&apos;)]) {
+//                 sh label: &quot;${env.STAGE_NAME}&quot;, script: &quot;&quot;&quot;
+//                 docker run -t --memory=&apos;512m&apos; --cpu-period=${env.CPU_PERIOD} --cpu-quota=150000 \
+//                     -e AUTH=&quot;$AUTH&quot; \
+//                     -v //var/run/docker.sock:/var/run/docker.sock:rw \
+//                     -w /play newrahmat/byoi:devops-ci-1.0.1 \
+//                     /bin/bash -c &apos;clone ${env.JOB_NAME} ${env.ref} &amp;&amp; cd ${env.JOB_NAME} &amp;&amp; devops-ci-py ${env.ref}&apos;
+//                 &quot;&quot;&quot;
+//             }
+//         }
+//     }
+// }
+
+
+
+
+// stage(&apos;CD STEP&apos;) {
+//     steps {
+//         script {
+//             env.FAILED_STAGE = &quot;${env.DISPLAY_NAME}&quot;
+//             echo &quot;Ã°Â&#x9f;Â&#x9a;Â&#x80; Running Build &amp; Deploy for ${env.ref} (${env.type})&quot;
+
+//             if (env.type == &apos;branch&apos; &amp;&amp; (env.ref == &apos;development&apos; || env.ref == &apos;staging&apos;)) {
+//                 echo &quot;Ã¢Â&#x9c;Â&#x85; Branch ${env.ref} meets deployment criteria. Proceeding with deployment...&quot;
+
+//                 sh label: &quot;${env.STAGE_NAME}&quot;, script: &quot;&quot;&quot;
+// echo &quot;=======================================&quot;;
+// echo &quot; Ã°Â&#x9f;Â&#x9a;Â&#x80; DEPLOY WEB........................&quot;;
+// echo &quot;=======================================&quot;;
+// ssh devops@${env.HOST} &quot;cat ${env.JOB_NAME}/docker-compose.yaml&quot; /dev/null 2&gt;&amp;1 &gt; docker-compose.yaml
+// yq eval &apos;.services.&quot;&apos;&quot;${env.JOB_NAME}&quot;&apos;&quot;.&quot;image&quot; = &quot;&apos;&quot;${env.IMAGE_VERSION}&quot;&apos;&quot;&apos; -i &quot;docker-compose.yaml&quot;
+// scp docker-compose.yaml devops@${env.HOST}:~/${env.JOB_NAME}/docker-compose.yaml
+// ssh devops@${env.HOST} &lt;&lt; EOF1
+// cat ${env.JOB_NAME}/docker-compose.yaml
+// docker compose -f ${env.JOB_NAME}/docker-compose.yaml pull
+// docker compose -f ${env.JOB_NAME}/docker-compose.yaml up -d --force-recreate
+// docker compose -f ${env.JOB_NAME}/docker-compose.yaml config
+// EOF1
+
+//                 &quot;&quot;&quot;
+//             } else {
+//                 echo &quot;Ã¢Â&#x9a;Â Ã¯Â¸Â&#x8f; Skipping deployment: Only &apos;development&apos; and &apos;staging&apos; branches are allowed.&quot;
+//             }
+//         }
+//     }
+// }
+
+
+
+
+//         // stage(&apos;CD STEP&apos;) {
+//         //     steps {
+//         //         script {
+//         //               env.FAILED_STAGE = &quot;${env.DISPLAY_NAME}&quot;
+//         //             echo &quot;Ã°Â&#x9f;Â&#x9a;Â&#x80; Running Build &amp; Deploy for ${env.ref} (${env.type})&quot;
+//         //             // sh &apos;./deploy.sh&apos;  // Sesuaikan dengan proses build/deploy
+//         //         sh label: &quot;${env.STAGE_NAME}&quot;, script:
+//         //         // set-image ${env.NS} ${env.DEPLOYMENT} ${env.IMAGE_VERSION} 
+//         //         &quot;&quot;&quot;
+//         //         ns ${env.NS}
+//         //         kubectl -n=${env.NS} set image deployment/${env.DEPLOYMENT} ${env.DEPLOYMENT}=${env.IMAGE_VERSION}
+//         //         CHECK=$(kubectl -n=${env.NS} rollout status deployment.v1.apps/${env.DEPLOYMENT} &gt; /dev/null ; echo $?)
+//         //         if [[ &quot;$CHECK&quot; != 0 ]];
+//         //         then
+//         //         echo &quot;!!!!FAIL&quot;
+//         //           exit -1
+//         //         else
+//         //         kubectl -n=${env.NS} rollout status deployment.v1.apps/${env.DEPLOYMENT}
+//         //         kubectl -n=${env.NS} get deploy ${env.DEPLOYMENT}
+//         //         kubectl -n=${env.NS} get service ${env.DEPLOYMENT}
+//         //         IMAGE=$(kubectl -n=${env.NS} get deploy ${env.DEPLOYMENT} -o=jsonpath=&apos;{$.spec.template.spec.containers[:1].image}&apos;)
+//         //         echo &quot; Ã¢Â&#x9c;Â&#x94;Ã¯Â¸Â&#x8f;  DEPLOY IS DONE ====&gt;&gt;&gt; $IMAGE&quot;
+//         //         fi
+//         //         &quot;&quot;&quot;                    
+//         //         }
+//         //     }
+//         // }
+        
+        
+        
+        
+//     }
+
+//     post {
+//         failure {
+//             echo &quot;Ã¢Â&#x9d;Â&#x8c; Build gagal untuk ${env.ref} (${env.type})&quot;
+//             teamsNotification(&apos;FAILURE&apos;, &quot;STEP: ${FAILED_STAGE} - Job ${env.JOB_NAME} #${env.BUILD_NUMBER} FAILED. [View Job](${env.BUILD_URL})&quot;)
+//         }
+//         success {
+//             echo &quot;Ã¢Â&#x9c;Â&#x85; Build berhasil untuk ${env.ref} (${env.type})&quot;
+//                 teamsNotification(&apos;SUCCESS&apos;, &quot;Job ${env.JOB_NAME} #${env.BUILD_NUMBER} SUCCESS. [View Job](${env.BUILD_URL})&quot;)            
+//         }
+//     }
+// }</script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>

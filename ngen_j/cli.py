@@ -284,35 +284,36 @@ def main():
     
     if len(sys.argv) < 2:
         print("Usage: ngen-j <command> [args...]", file=sys.stderr)
-        print("\nAvailable commands:", file=sys.stderr)
-        # List available commands
-        commands_found = set()
-        
-        # Add built-in commands
-        commands_found.add("login")
-        commands_found.add("check")
-        commands_found.add("jobs")
-        commands_found.add("job")
-        commands_found.add("build")
-        
-        # Check bundled scripts
-        package_dir = Path(__file__).parent
-        bundled_dir = package_dir / "scripts"
-        if bundled_dir.exists():
-            for script in bundled_dir.glob("ngen-j-*"):
-                if script.is_file():
-                    command = script.name.replace("ngen-j-", "", 1)
-                    commands_found.add(command)
-        
-        # Print commands
-        for cmd in sorted(commands_found):
-            if cmd in ["login", "check", "jobs", "job", "build"]:
-                print(f"  {cmd} (builtin)")
-            else:
-                print(f"  {cmd}")
-        if not commands_found:
-            print("  (no commands found)")
-        sys.exit(1)
+        print("\nngen-j is a Jenkins API management CLI tool.", file=sys.stderr)
+        print("\nBuilt-in commands:", file=sys.stderr)
+        print("  login             Save Jenkins credentials", file=sys.stderr)
+        print("  check             Validate Jenkins access", file=sys.stderr)
+        print("  jobs              List all Jenkins jobs", file=sys.stderr)
+        print("  job <name>        Get job details", file=sys.stderr)
+        print("  job --last-success Get last 10 successful jobs", file=sys.stderr)
+        print("  job --last-failure Get last 10 failed jobs", file=sys.stderr)
+        print("  build <job-name>  Trigger a build", file=sys.stderr)
+        print("  log <name> <num>  Get build console output", file=sys.stderr)
+        print("  get-xml <name>    Get job configuration XML", file=sys.stderr)
+        print("  create <name> <xml> Create/update job from XML", file=sys.stderr)
+        print("  delete <name>     Delete a job", file=sys.stderr)
+        print("\nScript commands:", file=sys.stderr)
+        print("  <script-name>     Execute bundled script", file=sys.stderr)
+        print("\nExamples:", file=sys.stderr)
+        print("  ngen-j --version", file=sys.stderr)
+        print("  ngen-j jobs", file=sys.stderr)
+        print("  ngen-j job my-job", file=sys.stderr)
+        print("  ngen-j job --last-success", file=sys.stderr)
+        print("  ngen-j job --last-failure", file=sys.stderr)
+        print("  ngen-j build my-job", file=sys.stderr)
+        print("  ngen-j build my-job --param REF_NAME=develop", file=sys.stderr)
+        print("  ngen-j build my-job --param=REF_NAME=develop", file=sys.stderr)
+        print("  ngen-j log my-job 42", file=sys.stderr)
+        print("  ngen-j get-xml my-job", file=sys.stderr)
+        print("  ngen-j create my-job job.xml", file=sys.stderr)
+        print("  ngen-j delete my-job", file=sys.stderr)
+        print("  ngen-j delete my-job --force", file=sys.stderr)
+        sys.exit(0)
     
     command = sys.argv[1]
     
@@ -325,14 +326,29 @@ def main():
         print("  check             Validate Jenkins access", file=sys.stderr)
         print("  jobs              List all Jenkins jobs", file=sys.stderr)
         print("  job <name>        Get job details", file=sys.stderr)
+        print("  job --last-success Get last 10 successful jobs", file=sys.stderr)
+        print("  job --last-failure Get last 10 failed jobs", file=sys.stderr)
         print("  build <job-name>  Trigger a build", file=sys.stderr)
+        print("  log <name> <num>  Get build console output", file=sys.stderr)
+        print("  get-xml <name>    Get job configuration XML", file=sys.stderr)
+        print("  create <name> <xml> Create/update job from XML", file=sys.stderr)
+        print("  delete <name>     Delete a job", file=sys.stderr)
         print("\nScript commands:", file=sys.stderr)
         print("  <script-name>     Execute bundled script", file=sys.stderr)
         print("\nExamples:", file=sys.stderr)
         print("  ngen-j --version", file=sys.stderr)
         print("  ngen-j jobs", file=sys.stderr)
         print("  ngen-j job my-job", file=sys.stderr)
+        print("  ngen-j job --last-success", file=sys.stderr)
+        print("  ngen-j job --last-failure", file=sys.stderr)
         print("  ngen-j build my-job", file=sys.stderr)
+        print("  ngen-j build my-job --param REF_NAME=develop", file=sys.stderr)
+        print("  ngen-j build my-job --param=REF_NAME=develop", file=sys.stderr)
+        print("  ngen-j log my-job 42", file=sys.stderr)
+        print("  ngen-j get-xml my-job", file=sys.stderr)
+        print("  ngen-j create my-job job.xml", file=sys.stderr)
+        print("  ngen-j delete my-job", file=sys.stderr)
+        print("  ngen-j delete my-job --force", file=sys.stderr)
         sys.exit(0)
     
     # Handle login command
@@ -359,11 +375,84 @@ def main():
 
     # Handle job command
     if command == "job":
-        if len(sys.argv) < 3:
-            print("Error: job name required", file=sys.stderr)
+        args = sys.argv[2:]
+
+        # Check for flags
+        if '--last-success' in args:
+            args.remove('--last-success')
+            client = JenkinsClient()
+            jobs_info = client.get_recent_jobs_by_status('SUCCESS', 10)
+            print("Last 10 Successful Jobs:")
+            print("=" * 80)
+            for i, job_info in enumerate(jobs_info, 1):
+                print(f"{i}. {job_info['name']}")
+                print(f"   URL: {job_info['url']}")
+                if job_info.get('description'):
+                    print(f"   Description: {job_info['description']}")
+                print(f"   Buildable: {job_info.get('buildable', False)}")
+                last_build = job_info.get('last_build', {})
+                if last_build:
+                    status = last_build['status']
+                    # Colorize status
+                    if status == 'SUCCESS':
+                        status_display = f"\033[92m{status}\033[0m"  # Green
+                    elif status == 'FAILURE':
+                        status_display = f"\033[91m{status}\033[0m"  # Red
+                    elif status == 'BUILDING':
+                        status_display = f"\033[93m{status}\033[0m"  # Yellow
+                    else:
+                        status_display = status
+
+                    print(f"   Last Build: #{last_build.get('number', 'N/A')} - {status_display}")
+                    print(f"   Build Time: {last_build.get('start_time', 'N/A')}")
+                    print(f"   Duration: {last_build.get('duration', 'N/A')}")
+                print()
+            if not jobs_info:
+                print("No successful jobs found.")
+            sys.exit(0)
+
+        elif '--last-failure' in args:
+            args.remove('--last-failure')
+            client = JenkinsClient()
+            jobs_info = client.get_recent_jobs_by_status('FAILURE', 10)
+            print("Last 10 Failed Jobs:")
+            print("=" * 80)
+            for i, job_info in enumerate(jobs_info, 1):
+                print(f"{i}. {job_info['name']}")
+                print(f"   URL: {job_info['url']}")
+                if job_info.get('description'):
+                    print(f"   Description: {job_info['description']}")
+                print(f"   Buildable: {job_info.get('buildable', False)}")
+                last_build = job_info.get('last_build', {})
+                if last_build:
+                    status = last_build['status']
+                    # Colorize status
+                    if status == 'SUCCESS':
+                        status_display = f"\033[92m{status}\033[0m"  # Green
+                    elif status == 'FAILURE':
+                        status_display = f"\033[91m{status}\033[0m"  # Red
+                    elif status == 'BUILDING':
+                        status_display = f"\033[93m{status}\033[0m"  # Yellow
+                    else:
+                        status_display = status
+
+                    print(f"   Last Build: #{last_build.get('number', 'N/A')} - {status_display}")
+                    print(f"   Build Time: {last_build.get('start_time', 'N/A')}")
+                    print(f"   Duration: {last_build.get('duration', 'N/A')}")
+                print()
+            if not jobs_info:
+                print("No failed jobs found.")
+            sys.exit(0)
+
+        # Default behavior: get specific job
+        if not args:
+            print("Error: job name required or use --last-success/--last-failure", file=sys.stderr)
             print("Usage: ngen-j job <name>", file=sys.stderr)
+            print("       ngen-j job --last-success", file=sys.stderr)
+            print("       ngen-j job --last-failure", file=sys.stderr)
             sys.exit(1)
-        job_name = sys.argv[2]
+
+        job_name = args[0]
         client = JenkinsClient()
         job_info = client.get_job(job_name)
         print(f"Job: {job_info['name']}")
@@ -371,20 +460,193 @@ def main():
         if job_info.get('description'):
             print(f"Description: {job_info['description']}")
         print(f"Buildable: {job_info.get('buildable', False)}")
+
+        # Display recent builds
+        recent_builds = job_info.get('recent_builds', [])
+        if recent_builds:
+            print("\nRecent Builds:")
+            print("-" * 70)
+            print(f"{'Build #':<10} {'Status':<12} {'Start Time':<20} {'Duration':<15}")
+            print("-" * 70)
+            for build in recent_builds:
+                status = build['status']
+                # Colorize status
+                if status == 'SUCCESS':
+                    status_display = f"\033[92m{status}\033[0m"  # Green
+                elif status == 'FAILURE':
+                    status_display = f"\033[91m{status}\033[0m"  # Red
+                elif status == 'BUILDING':
+                    status_display = f"\033[93m{status}\033[0m"  # Yellow
+                else:
+                    status_display = status
+
+                print(f"{build['number']:<10} {status_display:<12} {build['start_time']:<20} {build['duration']:<15}")
+        else:
+            print("\nNo recent builds found.")
+
         sys.exit(0)
 
     # Handle build command
     if command == "build":
+        # Parse arguments for --param flags
+        args = sys.argv[2:]
+        parameters = {}
+
+        # Extract --param KEY=VALUE arguments
+        filtered_args = []
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg == '--param':
+                # Handle --param KEY1=VALUE1 KEY2=VALUE2 format (can have multiple parameters)
+                i += 1
+                # Collect all following arguments that contain '=' until we hit another flag or job name
+                while i < len(args):
+                    next_arg = args[i]
+                    if next_arg.startswith('--') or '=' not in next_arg:
+                        # Stop if we hit another flag or argument without '='
+                        break
+                    if '=' in next_arg:
+                        key, value = next_arg.split('=', 1)
+                        parameters[key] = value
+                    i += 1
+                continue
+            elif arg.startswith('--param='):
+                # Parse --param=KEY=VALUE format
+                param_str = arg[8:]  # Remove '--param=' prefix
+                if '=' in param_str:
+                    key, value = param_str.split('=', 1)
+                    parameters[key] = value
+                else:
+                    print(f"Error: Invalid parameter format '{arg}'. Use --param=KEY=VALUE", file=sys.stderr)
+                    sys.exit(1)
+            else:
+                filtered_args.append(arg)
+            i += 1
+
+        if len(filtered_args) != 1:
+            print("Usage: ngen-j build <job-name> [--param KEY1=VALUE1 KEY2=VALUE2 ...] or [--param=KEY=VALUE ...]", file=sys.stderr)
+            print("  --param KEY=VALUE ...  Pass multiple build parameters after single --param flag", file=sys.stderr)
+            print("  --param=KEY=VALUE      Alternative format for build parameters", file=sys.stderr)
+            sys.exit(1)
+
+        job_name = filtered_args[0]
+        client = JenkinsClient()
+        build_info = client.trigger_build(job_name, parameters if parameters else None)
+
+        print(f"Build triggered for job: {job_name}")
+        if parameters:
+            print("Parameters:")
+            for key, value in parameters.items():
+                print(f"  {key}={value}")
+        print(f"Queue ID: {build_info['queue_id']}")
+        print(f"Queue URL: {build_info['url']}")
+        sys.exit(0)
+
+    # Handle create command
+    if command == "create":
+        # Parse arguments for --force flag
+        force = False
+        args = sys.argv[2:]
+
+        if '--force' in args:
+            force = True
+            args.remove('--force')
+
+        if len(args) != 2:
+            print("Usage: ngen-j create <job-name> <xml-file> [--force]", file=sys.stderr)
+            print("  --force    Skip confirmation when updating existing job", file=sys.stderr)
+            sys.exit(1)
+
+        job_name = args[0]
+        xml_file = args[1]
+
+        # Read XML file
+        try:
+            with open(xml_file, 'r', encoding='utf-8') as f:
+                xml_content = f.read()
+        except FileNotFoundError:
+            print(f"Error: XML file '{xml_file}' not found", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error reading XML file: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        # Create/update job
+        client = JenkinsClient()
+        result = client.create_job_from_xml(job_name, xml_content, force)
+
+        if result['status'] == 'success':
+            print(f"✅ Job '{job_name}' {result['action']} successfully!")
+            print(f"   URL: {result['url']}")
+        elif result['status'] == 'cancelled':
+            print(f"ℹ️  {result['message']}")
+        else:
+            print(f"❌ Failed to create/update job: {result.get('error', 'Unknown error')}")
+            sys.exit(1)
+
+        sys.exit(0)
+
+    # Handle delete command
+    if command == "delete":
+        # Parse arguments for --force flag
+        force = False
+        args = sys.argv[2:]
+
+        if '--force' in args:
+            force = True
+            args.remove('--force')
+
+        if len(args) != 1:
+            print("Usage: ngen-j delete <job-name> [--force]", file=sys.stderr)
+            print("  --force    Skip confirmation before deleting job", file=sys.stderr)
+            sys.exit(1)
+
+        job_name = args[0]
+
+        # Delete job
+        client = JenkinsClient()
+        result = client.delete_job(job_name, force)
+
+        if result['status'] == 'success':
+            print(f"✅ Job '{job_name}' deleted successfully!")
+        elif result['status'] == 'cancelled':
+            print(f"ℹ️  {result['message']}")
+        else:
+            print(f"❌ Failed to delete job: {result.get('error', 'Unknown error')}")
+
+        sys.exit(0)
+
+    # Handle get-xml command
+    if command == "get-xml":
         if len(sys.argv) < 3:
             print("Error: job name required", file=sys.stderr)
-            print("Usage: ngen-j build <job-name>", file=sys.stderr)
+            print("Usage: ngen-j get-xml <job-name>", file=sys.stderr)
             sys.exit(1)
         job_name = sys.argv[2]
         client = JenkinsClient()
-        build_info = client.trigger_build(job_name)
-        print(f"Build triggered for job: {job_name}")
-        print(f"Queue ID: {build_info['queue_id']}")
-        print(f"Queue URL: {build_info['url']}")
+        xml_content = client.get_job_xml(job_name)
+        print(xml_content)
+        sys.exit(0)
+
+    # Handle log command
+    if command == "log":
+        if len(sys.argv) < 4:
+            print("Error: job name and build number required", file=sys.stderr)
+            print("Usage: ngen-j log <job-name> <build-number>", file=sys.stderr)
+            sys.exit(1)
+        job_name = sys.argv[2]
+        try:
+            build_number = int(sys.argv[3])
+        except ValueError:
+            print("Error: build number must be an integer", file=sys.stderr)
+            sys.exit(1)
+
+        client = JenkinsClient()
+        logs = client.get_build_logs(job_name, build_number)
+        print(f"Console output for {job_name} build #{build_number}:")
+        print("=" * 80)
+        print(logs)
         sys.exit(0)
 
     # Try to find and execute script
