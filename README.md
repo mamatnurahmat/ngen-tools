@@ -1,16 +1,16 @@
-# ngenctl
+# ngen-j
 
-[![GitHub](https://img.shields.io/badge/GitHub-mamatnurahmat%2Fngenctl-blue)](https://github.com/mamatnurahmat/ngenctl)
-[![PyPI](https://img.shields.io/pypi/v/ngenctl)](https://pypi.org/project/ngenctl/)
+[![GitHub](https://img.shields.io/badge/GitHub-mamatnurahmat%2Fngen-j-blue)](https://github.com/mamatnurahmat/ngen-j)
+[![PyPI](https://img.shields.io/pypi/v/ngen-j)](https://pypi.org/project/ngen-j/)
 
-Universal command wrapper package that dispatches to `/usr/local/bin/ngenctl-*` scripts, environment commands, and supports aliases for quick access.
+Jenkins API management CLI tool that also supports executing scripts from `/usr/local/bin/ngen-j-*`.
 
 ## Installation
 
 Install from PyPI:
 
 ```bash
-pip install ngenctl
+pip install ngen-j
 ```
 
 Or install from source:
@@ -19,149 +19,126 @@ Or install from source:
 pip install .
 ```
 
-**Note:** Installation to `/usr/local/bin` requires sudo/root permissions. The package will automatically install bundled scripts to `/usr/local/bin/ngenctl-*` during installation.
-
 ## Usage
 
-The `ngenctl` command provides a unified interface for executing:
-- Scripts from `/usr/local/bin/ngenctl-{command}`
-- Environment commands available in PATH (configured via `config.json`)
-- Aliases for quick command shortcuts (configured via `alias.json`)
+The `ngen-j` command provides:
+- Jenkins API management commands
+- Script execution from bundled scripts
 
-### Command Resolution Priority
+### Version
 
-1. **Aliases** - Commands defined in `$HOME/.ngenctl/alias.json`
-2. **Scripts** - Scripts from `/usr/local/bin/ngenctl-{command}` or bundled scripts
-3. **Environment Commands** - Commands from `$HOME/.ngenctl/config.json` available in PATH
-
-### Examples
-
-#### Scripts
-
-If you have a script at `/usr/local/bin/ngenctl-rancher`, you can use it as:
+Check the version:
 
 ```bash
-ngenctl rancher --help
-ngenctl rancher version
+ngen-j --version
+# or
+ngen-j -V
 ```
 
-#### Aliases
+### Login
 
-Create aliases in `$HOME/.ngenctl/alias.json`:
-
-```json
-{
-  "login": "rancher login",
-  "clusters": "rancher clusters",
-  "ci": "devops-ci",
-  "gn": "kubectl get nodes"
-}
-```
-
-Then use the aliases:
+Save Jenkins credentials for easy access:
 
 ```bash
-ngenctl login           # Executes: ngenctl rancher login
-ngenctl clusters        # Executes: ngenctl rancher clusters
-ngenctl ci saas-app develop  # Executes: ngenctl devops-ci saas-app develop
-ngenctl gn              # Executes: ngenctl kubectl get nodes
+ngen-j login
 ```
 
-#### Environment Commands
+The login command will:
+- Prompt for Jenkins URL
+- Ask for authentication method (username+token, username+password, or base64)
+- Save credentials to `~/.ngen-j/.env`
+- Test the connection
 
-Configure environment commands in `$HOME/.ngenctl/config.json`:
+After login, you can use Jenkins commands without setting environment variables each time.
 
-```json
-{
-  "doq": "doq",
-  "kubectl": "kubectl"
-}
-```
+### Check Connection
 
-Then use them directly:
+Validate your Jenkins access and credentials:
 
 ```bash
-ngenctl doq ns develop-saas    # Executes: doq ns develop-saas
-ngenctl kubectl get nodes      # Executes: kubectl get nodes
+ngen-j check
 ```
+
+The check command will:
+- Test connection to Jenkins server
+- Verify authentication credentials
+- Display Jenkins version and basic info
+- Show troubleshooting tips if connection fails
+
+**Examples:**
+```bash
+ngen-j login                    # Setup Jenkins credentials
+ngen-j check                    # Validate connection
+ngen-j --version               # Check version
+ngen-j jobs                     # List all jobs
+ngen-j job my-job               # Get job details
+ngen-j build my-job             # Trigger build
+```
+
+### Jenkins API Management
+
+Manage Jenkins jobs and builds using environment variables for authentication.
+
+#### Environment Variables
+
+Set the following environment variables for Jenkins authentication:
+
+```bash
+export JENKINS_URL="https://jenkins.example.com"
+export JENKINS_USER="your-username"
+export JENKINS_TOKEN="your-api-token"
+```
+
+Alternatively, you can use base64 encoded authentication:
+
+```bash
+export JENKINS_URL="https://jenkins.example.com"
+export JENKINS_AUTH="base64-encoded-user:token"
+```
+
+#### Jenkins Commands
+
+**List all jobs:**
+```bash
+ngen-j jobs
+```
+
+**Get job details:**
+```bash
+ngen-j job <job-name>
+```
+
+**Trigger a build:**
+```bash
+ngen-j build <job-name>
+```
+
+### Script Execution
+
+If you have a bundled script, you can execute it directly:
+
+```bash
+ngen-j rancher --help
+ngen-j rancher version
+```
+
+The CLI will look for scripts in the bundled scripts directory.
 
 ## How It Works
 
-1. When you run `ngenctl {command}`, the CLI dispatcher checks in this order:
-   - **Aliases**: Checks if the command is defined in `$HOME/.ngenctl/alias.json` and resolves it
-   - **Scripts**: Looks for a script at `/usr/local/bin/ngenctl-{command}` or bundled scripts
-   - **Environment Commands**: Checks `$HOME/.ngenctl/config.json` and verifies the command is available in PATH
+1. When you run `ngen-j {command}`, the CLI dispatcher checks in this order:
+   - **Built-in commands**: Jenkins management commands
+   - **Scripts**: Looks for a script at `/usr/local/bin/ngen-j-{command}` or bundled scripts
 2. If found, it executes the command with any additional arguments passed
 3. Scripts can be any executable file (bash, sh, Python, or binary)
-4. Aliases support recursive resolution and circular reference detection
-
-## Configuration
-
-### Aliases (`$HOME/.ngenctl/alias.json`)
-
-Create command aliases to shorten frequently used commands:
-
-```json
-{
-  "login": "rancher login",
-  "clusters": "rancher clusters",
-  "ci": "devops-ci",
-  "gn": "kubectl get nodes"
-}
-```
-
-Aliases can reference other commands (scripts, environment commands, or other aliases). Circular references are automatically detected.
-
-### Environment Commands (`$HOME/.ngenctl/config.json`)
-
-Map `ngenctl` commands to executables available in your PATH:
-
-```json
-{
-  "doq": "doq",
-  "kubectl": "kubectl",
-  "docker": "docker"
-}
-```
-
-Commands in `config.json` will only work if the actual executable is available in your PATH.
 
 ## Adding New Commands
 
-### Method 1: Scripts
+### Scripts
 
-1. Place a script at `/usr/local/bin/ngenctl-{your-command}`
-2. Make sure it's executable: `chmod +x /usr/local/bin/ngenctl-{your-command}`
-3. Use it with: `ngenctl {your-command}`
-
-### Method 2: Aliases
-
-1. Edit `$HOME/.ngenctl/alias.json`
-2. Add your alias: `"{short-name}": "{full-command}"`
-3. Use it with: `ngenctl {short-name}`
-
-Example:
-```json
-{
-  "login": "rancher login"
-}
-```
-Then use: `ngenctl login`
-
-### Method 3: Environment Commands
-
-1. Edit `$HOME/.ngenctl/config.json`
-2. Add your command: `"{ngenctl-command}": "{actual-command-in-path}"`
-3. Ensure the actual command is available in your PATH
-4. Use it with: `ngenctl {ngenctl-command}`
-
-Example:
-```json
-{
-  "doq": "doq"
-}
-```
-Then use: `ngenctl doq` (if `doq` is in PATH)
+1. Place a script in the `ngen_j/scripts/` directory with name `ngen-j-{your-command}`
+2. Make sure it's executable: `chmod +x ngen_j/scripts/ngen-j-{your-command}`
+3. Use it with: `ngen-j {your-command}`
 
 ## Development
 
@@ -192,10 +169,9 @@ Untuk panduan lengkap, lihat [PUBLISH.md](PUBLISH.md).
 
 ## Repository
 
-- **GitHub**: https://github.com/mamatnurahmat/ngenctl
-- **PyPI**: https://pypi.org/project/ngenctl/
+- **GitHub**: https://github.com/mamatnurahmat/ngen-j
+- **PyPI**: https://pypi.org/project/ngen-j/
 
 ## License
 
 MIT
-

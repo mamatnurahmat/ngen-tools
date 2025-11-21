@@ -24,12 +24,12 @@ try:
         if match:
             print(match.group(1))
         else:
-            print('ngenctl')
+            print('ngen-j')
 except:
-    print('ngenctl')
-" 2>/dev/null || echo "ngenctl")
+    print('ngen-j')
+" 2>/dev/null || echo "ngen-j")
 else
-    PACKAGE_NAME="ngenctl"
+    PACKAGE_NAME="ngen-j"
 fi
 
 PYPI_REPO="pypi"
@@ -244,14 +244,14 @@ except Exception:
         sed -i "s/version = \"$current_version\"/version = \"$new_version\"/g" pyproject.toml
     fi
     
-    # Update ngenctl/__init__.py
-    if [ -f "ngenctl/__init__.py" ]; then
+    # Update ngen_j/__init__.py
+    if [ -f "ngen_j/__init__.py" ]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
             # macOS
-            sed -i '' "s/__version__ = \"$current_version\"/__version__ = \"$new_version\"/g" ngenctl/__init__.py
+            sed -i '' "s/__version__ = \"$current_version\"/__version__ = \"$new_version\"/g" ngen_j/__init__.py
         else
             # Linux
-            sed -i "s/__version__ = \"$current_version\"/__version__ = \"$new_version\"/g" ngenctl/__init__.py
+            sed -i "s/__version__ = \"$current_version\"/__version__ = \"$new_version\"/g" ngen_j/__init__.py
         fi
     fi
     
@@ -259,7 +259,7 @@ except Exception:
     
     # Optional: commit the version change if in git repo
     if git rev-parse --git-dir > /dev/null 2>&1; then
-        git add pyproject.toml ngenctl/__init__.py 2>/dev/null || true
+        git add pyproject.toml ngen_j/__init__.py 2>/dev/null || true
         git commit -m "Bump version to $new_version" --no-verify 2>/dev/null || true
         print_info "Version change committed"
     fi
@@ -294,8 +294,8 @@ check_package() {
         exit 1
     fi
     
-    if [ ! -d "ngenctl" ]; then
-        print_error "ngenctl package directory not found!"
+    if [ ! -d "ngen_j" ]; then
+        print_error "ngen_j package directory not found!"
         exit 1
     fi
     
@@ -337,10 +337,10 @@ test_package() {
     if python3 -c "
 import sys
 sys.path.insert(0, '.')
-# Test that ngenctl directory exists and can be imported
-import ngenctl
-print('✅ Package directory (ngenctl) imported successfully')
-# After install, 'ngenctl' will be available via package_dir mapping
+# Test that ngen_j directory exists and can be imported
+import ngen_j
+print('✅ Package directory (ngen_j) imported successfully')
+# After install, 'ngen_j' will be available via package_dir mapping
 " 2>/dev/null; then
         ((test_passed++))
     else
@@ -353,8 +353,8 @@ print('✅ Package directory (ngenctl) imported successfully')
     if python3 -c "
 import sys
 sys.path.insert(0, '.')
-import ngenctl
-print(f'✅ Version: {ngenctl.__version__}')
+import ngen_j
+print(f'✅ Version: {ngen_j.__version__}')
 " 2>/dev/null; then
         ((test_passed++))
     else
@@ -367,7 +367,7 @@ print(f'✅ Version: {ngenctl.__version__}')
     if python3 -c "
 import sys
 sys.path.insert(0, '.')
-from ngenctl.cli import main
+from ngen_j.cli import main
 print('✅ CLI entry point found')
 " 2>/dev/null; then
         ((test_passed++))
@@ -383,9 +383,9 @@ print('✅ CLI entry point found')
 import sys
 sys.path.insert(0, '.')
 try:
-    from ngenctl.cli import main
+    from ngen_j.cli import main
     import sys
-    sys.argv = ['ngenctl', '--help']
+    sys.argv = ['ngen-j', '--help']
     main()
 except SystemExit as e:
     if e.code == 0:
@@ -408,12 +408,12 @@ except Exception as e:
     
     # Test 5: Check bundled scripts exist
     print_info "  Test 5: Check bundled scripts..."
-    scripts_dir="ngenctl/scripts"
+    scripts_dir="ngen_j/scripts"
     if [ -d "$scripts_dir" ]; then
-        script_count=$(find "$scripts_dir" -name "ngenctl-*" -type f | wc -l)
+        script_count=$(find "$scripts_dir" -name "ngen-j-*" -type f | wc -l)
         if [ $script_count -gt 0 ]; then
             print_info "    ✅ Found $script_count bundled script(s)"
-            find "$scripts_dir" -name "ngenctl-*" -type f -exec basename {} \; | while read script; do
+            find "$scripts_dir" -name "ngen-j-*" -type f -exec basename {} \; | while read script; do
                 print_info "      - $script"
             done
             ((test_passed++))
@@ -437,8 +437,8 @@ import sys
 try:
     with zipfile.ZipFile('$wheel_file', 'r') as z:
         files = z.namelist()
-        # Check for both possible structures (ngenctl or ngenctl in wheel)
-        if any('ngenctl/__init__.py' in f or 'ngenctl/__init__.py' in f for f in files):
+        # Check for both possible structures (ngen_j or ngen_j in wheel)
+        if any('ngen_j/__init__.py' in f or 'ngen_j/__init__.py' in f for f in files):
             print('✅ Wheel contains package files')
             sys.exit(0)
         else:
@@ -530,7 +530,7 @@ publish_prod() {
         print_error "       b) Request ownership/access from current owner"
         print_error ""
         print_error "  3. Version already exists:"
-        print_error "     - Increment version number in pyproject.toml and ngenctl/__init__.py"
+        print_error "     - Increment version number in pyproject.toml and ngen_j/__init__.py"
         print_error ""
         print_error "  4. Network/API issues:"
         print_error "     - Check internet connection"
