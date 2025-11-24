@@ -82,6 +82,11 @@ ngen-j create my-job job.xml    # Create job from XML
 ngen-j create my-job job.xml --force  # Update existing job
 ngen-j delete my-job            # Delete job (with confirmation)
 ngen-j delete my-job --force    # Delete job without confirmation
+ngen-j plugin list              # List all installed plugins
+ngen-j plugin list --format json --output plugins.json  # Export to JSON
+ngen-j plugin list --format csv --output plugins.csv   # Export to CSV
+ngen-j plugin install git      # Install git plugin
+ngen-j plugin uninstall git    # Uninstall git plugin
 ```
 
 ### Jenkins API Management
@@ -171,6 +176,133 @@ Options:
 - `--force` - Skip confirmation before deleting job
 
 **Note:** Requires Jenkins permissions: Job/Create, Job/Update, Job/Configure, Job/Delete
+
+**List installed plugins:**
+```bash
+ngen-j plugin list [--format json|csv] [--output <file>]
+```
+
+Options:
+- `--format json|csv` - Export format (default: table)
+- `--output <file>` - Output file (optional, defaults to stdout)
+
+Examples:
+```bash
+ngen-j plugin list
+ngen-j plugin list --format json
+ngen-j plugin list --format json --output plugins.json
+ngen-j plugin list --format csv --output plugins.csv
+```
+
+**Install plugin(s):**
+```bash
+ngen-j plugin install <plugin1> [plugin2] ...
+```
+
+Examples:
+```bash
+ngen-j plugin install git
+ngen-j plugin install git docker-workflow
+```
+
+**Uninstall plugin(s):**
+```bash
+ngen-j plugin uninstall <plugin1> [plugin2] ...
+```
+
+Examples:
+```bash
+ngen-j plugin uninstall git
+ngen-j plugin uninstall git docker-workflow
+```
+
+**Note:** Plugin operations require Jenkins permissions: Overall/Administer or Plugin/Install and Plugin/Uninstall
+
+### Credential Management
+
+Manage Jenkins credentials stored in the global credentials store.
+
+**List all credentials:**
+```bash
+ngen-j cred list
+```
+
+**Create a credential (interactive mode):**
+```bash
+ngen-j cred create
+```
+
+The interactive mode will prompt you to:
+- Select credential type (Username/Password, Secret Text, SSH Key)
+- Enter credential ID
+- Enter description
+- Enter type-specific fields (username, password, secret, private key, etc.)
+
+**Create a credential (non-interactive mode):**
+```bash
+ngen-j cred create --type <type> --id <id> [options...]
+```
+
+Supported credential types:
+- `username_password` or `username-password` - Username and password credentials
+- `secret_text` or `secret-text` - Secret text credentials
+- `ssh_key` or `ssh-key` - SSH username with private key
+
+Options for `username_password`:
+- `--id <id>` - Credential ID (required)
+- `--description <desc>` - Description (optional)
+- `--username <user>` - Username (required)
+- `--password <pass>` - Password (required)
+- `--force` - Overwrite existing credential
+
+Options for `secret_text`:
+- `--id <id>` - Credential ID (required)
+- `--description <desc>` - Description (optional)
+- `--secret <secret>` - Secret text (required)
+- `--force` - Overwrite existing credential
+
+Options for `ssh_key`:
+- `--id <id>` - Credential ID (required)
+- `--description <desc>` - Description (optional)
+- `--username <user>` - Username (required)
+- `--private-key <key>` - Private key content (required if not using file)
+- `--private-key-file <file>` - Private key file path (required if not using key)
+- `--passphrase <phrase>` - Passphrase for encrypted private key (optional)
+- `--force` - Overwrite existing credential
+
+Examples:
+```bash
+# Interactive mode
+ngen-j cred create
+
+# Non-interactive: Username/Password
+ngen-j cred create --type username_password --id my-git-cred --username myuser --password mypass --description "Git credentials"
+
+# Non-interactive: Secret Text
+ngen-j cred create --type secret_text --id my-token --secret "my-secret-token" --description "API token"
+
+# Non-interactive: SSH Key
+ngen-j cred create --type ssh_key --id my-ssh-cred --username deploy --private-key-file ~/.ssh/id_rsa --description "Deployment SSH key"
+
+# Overwrite existing credential
+ngen-j cred create --type username_password --id my-cred --username newuser --password newpass --force
+```
+
+**Delete a credential:**
+```bash
+ngen-j cred delete <credential-id> [--force]
+```
+
+Options:
+- `--force` - Skip confirmation before deleting credential
+
+Examples:
+```bash
+ngen-j cred delete my-cred
+ngen-j cred delete my-cred --force
+```
+
+**Note:** Credential operations require Jenkins permissions: Credentials/View, Credentials/Create, Credentials/Delete, or Overall/Administer
 
 ### Script Execution
 

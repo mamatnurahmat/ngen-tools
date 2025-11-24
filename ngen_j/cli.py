@@ -297,6 +297,13 @@ def main():
         print("  get-xml <name>    Get job configuration XML", file=sys.stderr)
         print("  create <name> <xml> Create/update job from XML", file=sys.stderr)
         print("  delete <name>     Delete a job", file=sys.stderr)
+        print("  plugin list       List installed plugins", file=sys.stderr)
+        print("  plugin install   Install plugin(s)", file=sys.stderr)
+        print("  plugin uninstall Uninstall plugin(s)", file=sys.stderr)
+        print("                    Use --format json|csv and --output <file> for export", file=sys.stderr)
+        print("  cred list         List all credentials", file=sys.stderr)
+        print("  cred create       Create credential (interactive or non-interactive)", file=sys.stderr)
+        print("  cred delete <id>  Delete credential", file=sys.stderr)
         print("\nScript commands:", file=sys.stderr)
         print("  <script-name>     Execute bundled script", file=sys.stderr)
         print("\nExamples:", file=sys.stderr)
@@ -313,6 +320,14 @@ def main():
         print("  ngen-j create my-job job.xml", file=sys.stderr)
         print("  ngen-j delete my-job", file=sys.stderr)
         print("  ngen-j delete my-job --force", file=sys.stderr)
+        print("  ngen-j plugin list", file=sys.stderr)
+        print("  ngen-j plugin list --format json --output plugins.json", file=sys.stderr)
+        print("  ngen-j plugin list --format csv --output plugins.csv", file=sys.stderr)
+        print("  ngen-j plugin install git", file=sys.stderr)
+        print("  ngen-j plugin uninstall git", file=sys.stderr)
+        print("  ngen-j cred list", file=sys.stderr)
+        print("  ngen-j cred create", file=sys.stderr)
+        print("  ngen-j cred delete my-cred", file=sys.stderr)
         sys.exit(0)
     
     command = sys.argv[1]
@@ -333,6 +348,13 @@ def main():
         print("  get-xml <name>    Get job configuration XML", file=sys.stderr)
         print("  create <name> <xml> Create/update job from XML", file=sys.stderr)
         print("  delete <name>     Delete a job", file=sys.stderr)
+        print("  plugin list       List installed plugins", file=sys.stderr)
+        print("  plugin install   Install plugin(s)", file=sys.stderr)
+        print("  plugin uninstall Uninstall plugin(s)", file=sys.stderr)
+        print("                    Use --format json|csv and --output <file> for export", file=sys.stderr)
+        print("  cred list         List all credentials", file=sys.stderr)
+        print("  cred create       Create credential (interactive or non-interactive)", file=sys.stderr)
+        print("  cred delete <id>  Delete credential", file=sys.stderr)
         print("\nScript commands:", file=sys.stderr)
         print("  <script-name>     Execute bundled script", file=sys.stderr)
         print("\nExamples:", file=sys.stderr)
@@ -349,6 +371,14 @@ def main():
         print("  ngen-j create my-job job.xml", file=sys.stderr)
         print("  ngen-j delete my-job", file=sys.stderr)
         print("  ngen-j delete my-job --force", file=sys.stderr)
+        print("  ngen-j plugin list", file=sys.stderr)
+        print("  ngen-j plugin list --format json --output plugins.json", file=sys.stderr)
+        print("  ngen-j plugin list --format csv --output plugins.csv", file=sys.stderr)
+        print("  ngen-j plugin install git", file=sys.stderr)
+        print("  ngen-j plugin uninstall git", file=sys.stderr)
+        print("  ngen-j cred list", file=sys.stderr)
+        print("  ngen-j cred create", file=sys.stderr)
+        print("  ngen-j cred delete my-cred", file=sys.stderr)
         sys.exit(0)
     
     # Handle login command
@@ -648,6 +678,455 @@ def main():
         print("=" * 80)
         print(logs)
         sys.exit(0)
+
+    # Handle cred command
+    if command == "cred":
+        if len(sys.argv) < 3:
+            print("Error: cred subcommand required", file=sys.stderr)
+            print("Usage: ngen-j cred <list|create|delete> [args...]", file=sys.stderr)
+            print("\nCredential management commands:", file=sys.stderr)
+            print("  list                    List all credentials", file=sys.stderr)
+            print("  create                  Create a new credential (interactive)", file=sys.stderr)
+            print("  delete <id>             Delete a credential", file=sys.stderr)
+            print("\nCreate credential options (non-interactive):", file=sys.stderr)
+            print("  --type <type>           Credential type: username_password, secret_text, ssh_key", file=sys.stderr)
+            print("  --id <id>               Credential ID", file=sys.stderr)
+            print("  --description <desc>   Description", file=sys.stderr)
+            print("  --username <user>      Username (for username_password, ssh_key)", file=sys.stderr)
+            print("  --password <pass>      Password (for username_password)", file=sys.stderr)
+            print("  --secret <secret>      Secret text (for secret_text)", file=sys.stderr)
+            print("  --private-key <key>   Private key content (for ssh_key)", file=sys.stderr)
+            print("  --private-key-file <file>  Private key file path (for ssh_key)", file=sys.stderr)
+            print("  --passphrase <phrase>  Passphrase for encrypted private key (for ssh_key)", file=sys.stderr)
+            print("  --force                Overwrite existing credential", file=sys.stderr)
+            sys.exit(1)
+
+        subcommand = sys.argv[2]
+        client = JenkinsClient()
+
+        if subcommand == "list":
+            credentials = client.list_credentials()
+            
+            if credentials:
+                print("Jenkins Credentials:")
+                print("=" * 100)
+                print(f"{'ID':<30} {'Type':<25} {'Description':<40} {'Scope':<10}")
+                print("=" * 100)
+                for cred in credentials:
+                    cred_id = cred.get('id', 'N/A')
+                    cred_type = cred.get('type', 'N/A')
+                    # Extract readable type name
+                    if 'UsernamePassword' in cred_type:
+                        cred_type = 'Username/Password'
+                    elif 'StringCredentials' in cred_type:
+                        cred_type = 'Secret Text'
+                    elif 'SSHUserPrivateKey' in cred_type or 'BasicSSH' in cred_type:
+                        cred_type = 'SSH Key'
+                    else:
+                        cred_type = cred_type.split('.')[-1] if '.' in cred_type else cred_type
+                    
+                    description = cred.get('description', '')
+                    if len(description) > 38:
+                        description = description[:35] + "..."
+                    scope = cred.get('scope', 'GLOBAL')
+                    
+                    print(f"{cred_id:<30} {cred_type:<25} {description:<40} {scope:<10}")
+            else:
+                print("No credentials found.")
+            sys.exit(0)
+
+        elif subcommand == "create":
+            args = sys.argv[3:]
+            
+            # Check if non-interactive mode (has --type and --id)
+            is_interactive = True
+            if '--type' in args and '--id' in args:
+                is_interactive = False
+            
+            if is_interactive:
+                # Interactive mode
+                import getpass
+                
+                print("Create Jenkins Credential (Interactive Mode)")
+                print("=" * 50)
+                
+                print("\nSelect credential type:")
+                print("1. Username/Password")
+                print("2. Secret Text")
+                print("3. SSH Username with Private Key")
+                
+                type_choice = input("Choice [1-3]: ").strip()
+                
+                cred_type_map = {
+                    '1': 'username_password',
+                    '2': 'secret_text',
+                    '3': 'ssh_key'
+                }
+                
+                if type_choice not in cred_type_map:
+                    print("Error: Invalid choice", file=sys.stderr)
+                    sys.exit(1)
+                
+                cred_type = cred_type_map[type_choice]
+                
+                cred_id = input("Credential ID: ").strip()
+                if not cred_id:
+                    print("Error: Credential ID is required", file=sys.stderr)
+                    sys.exit(1)
+                
+                description = input("Description (optional): ").strip()
+                
+                username = None
+                password = None
+                secret = None
+                private_key = None
+                private_key_file = None
+                passphrase = None
+                
+                if cred_type == 'username_password':
+                    username = input("Username: ").strip()
+                    password = getpass.getpass("Password: ")
+                    if not username or not password:
+                        print("Error: Username and password are required", file=sys.stderr)
+                        sys.exit(1)
+                
+                elif cred_type == 'secret_text':
+                    secret = getpass.getpass("Secret text: ")
+                    if not secret:
+                        print("Error: Secret text is required", file=sys.stderr)
+                        sys.exit(1)
+                
+                elif cred_type == 'ssh_key':
+                    username = input("Username: ").strip()
+                    key_source = input("Private key from [1] string or [2] file? [1]: ").strip() or '1'
+                    
+                    if key_source == '2':
+                        private_key_file = input("Private key file path: ").strip()
+                        if not private_key_file:
+                            print("Error: Private key file path is required", file=sys.stderr)
+                            sys.exit(1)
+                    else:
+                        print("Paste private key (end with empty line or Ctrl+D):")
+                        private_key_lines = []
+                        try:
+                            while True:
+                                line = input()
+                                if not line:
+                                    break
+                                private_key_lines.append(line)
+                        except EOFError:
+                            pass
+                        private_key = '\n'.join(private_key_lines)
+                        if not private_key:
+                            print("Error: Private key is required", file=sys.stderr)
+                            sys.exit(1)
+                    
+                    passphrase_input = getpass.getpass("Passphrase (optional, press Enter to skip): ").strip()
+                    if passphrase_input:
+                        passphrase = passphrase_input
+                    
+                    if not username:
+                        print("Error: Username is required", file=sys.stderr)
+                        sys.exit(1)
+                
+                # Check if credential exists
+                existing_creds = client.list_credentials()
+                cred_exists = any(c.get('id') == cred_id for c in existing_creds)
+                
+                force = False
+                if cred_exists:
+                    response = input(f"Credential '{cred_id}' already exists. Overwrite? (y/N): ").strip().lower()
+                    if response in ['y', 'yes']:
+                        force = True
+                    else:
+                        print("Credential creation cancelled.")
+                        sys.exit(0)
+                
+                result = client.create_credential(
+                    cred_type=cred_type,
+                    cred_id=cred_id,
+                    description=description,
+                    username=username,
+                    password=password,
+                    secret=secret,
+                    private_key=private_key,
+                    private_key_file=private_key_file,
+                    passphrase=passphrase,
+                    force=force
+                )
+                
+            else:
+                # Non-interactive mode
+                # Parse arguments
+                cred_type = None
+                cred_id = None
+                description = ""
+                username = None
+                password = None
+                secret = None
+                private_key = None
+                private_key_file = None
+                passphrase = None
+                force = False
+                
+                i = 0
+                while i < len(args):
+                    arg = args[i]
+                    if arg == '--type' and i + 1 < len(args):
+                        cred_type = args[i + 1]
+                        i += 2
+                    elif arg == '--id' and i + 1 < len(args):
+                        cred_id = args[i + 1]
+                        i += 2
+                    elif arg == '--description' and i + 1 < len(args):
+                        description = args[i + 1]
+                        i += 2
+                    elif arg == '--username' and i + 1 < len(args):
+                        username = args[i + 1]
+                        i += 2
+                    elif arg == '--password' and i + 1 < len(args):
+                        password = args[i + 1]
+                        i += 2
+                    elif arg == '--secret' and i + 1 < len(args):
+                        secret = args[i + 1]
+                        i += 2
+                    elif arg == '--private-key' and i + 1 < len(args):
+                        private_key = args[i + 1]
+                        i += 2
+                    elif arg == '--private-key-file' and i + 1 < len(args):
+                        private_key_file = args[i + 1]
+                        i += 2
+                    elif arg == '--passphrase' and i + 1 < len(args):
+                        passphrase = args[i + 1]
+                        i += 2
+                    elif arg == '--force':
+                        force = True
+                        i += 1
+                    else:
+                        print(f"Error: Unknown argument '{arg}'", file=sys.stderr)
+                        sys.exit(1)
+                
+                # Validate required fields
+                if not cred_type:
+                    print("Error: --type is required", file=sys.stderr)
+                    sys.exit(1)
+                
+                if not cred_id:
+                    print("Error: --id is required", file=sys.stderr)
+                    sys.exit(1)
+                
+                # Normalize credential type
+                type_map = {
+                    'username_password': 'username_password',
+                    'username-password': 'username_password',
+                    'secret_text': 'secret_text',
+                    'secret-text': 'secret_text',
+                    'ssh_key': 'ssh_key',
+                    'ssh-key': 'ssh_key'
+                }
+                cred_type = type_map.get(cred_type.lower(), cred_type)
+                
+                # Validate type-specific fields
+                if cred_type == 'username_password':
+                    if not username or not password:
+                        print("Error: --username and --password are required for username_password type", file=sys.stderr)
+                        sys.exit(1)
+                elif cred_type == 'secret_text':
+                    if not secret:
+                        print("Error: --secret is required for secret_text type", file=sys.stderr)
+                        sys.exit(1)
+                elif cred_type == 'ssh_key':
+                    if not username:
+                        print("Error: --username is required for ssh_key type", file=sys.stderr)
+                        sys.exit(1)
+                    if not private_key and not private_key_file:
+                        print("Error: --private-key or --private-key-file is required for ssh_key type", file=sys.stderr)
+                        sys.exit(1)
+                
+                result = client.create_credential(
+                    cred_type=cred_type,
+                    cred_id=cred_id,
+                    description=description,
+                    username=username,
+                    password=password,
+                    secret=secret,
+                    private_key=private_key,
+                    private_key_file=private_key_file,
+                    passphrase=passphrase,
+                    force=force
+                )
+            
+            if result.get('status') == 'success':
+                print(f"✅ {result.get('message', 'Credential created successfully')}")
+            elif result.get('status') == 'exists':
+                print(f"⚠️  {result.get('message', 'Credential already exists')}")
+                print("Use --force to overwrite", file=sys.stderr)
+                sys.exit(1)
+            else:
+                print(f"❌ Failed to create credential: {result.get('error', 'Unknown error')}")
+                sys.exit(1)
+            sys.exit(0)
+
+        elif subcommand == "delete":
+            if len(sys.argv) < 4:
+                print("Error: credential ID required", file=sys.stderr)
+                print("Usage: ngen-j cred delete <credential-id> [--force]", file=sys.stderr)
+                sys.exit(1)
+            
+            cred_id = sys.argv[3]
+            force = '--force' in sys.argv
+            
+            if not force:
+                response = input(f"Are you sure you want to delete credential '{cred_id}'? (y/N): ").strip().lower()
+                if response not in ['y', 'yes']:
+                    print("Credential deletion cancelled.")
+                    sys.exit(0)
+            
+            result = client.delete_credential(cred_id, force=force)
+            
+            if result.get('status') == 'success':
+                print(f"✅ {result.get('message', 'Credential deleted successfully')}")
+            else:
+                print(f"❌ Failed to delete credential: {result.get('error', 'Unknown error')}")
+                sys.exit(1)
+            sys.exit(0)
+
+        else:
+            print(f"Error: Unknown cred subcommand '{subcommand}'", file=sys.stderr)
+            print("Usage: ngen-j cred <list|create|delete> [args...]", file=sys.stderr)
+            sys.exit(1)
+
+    # Handle plugin command
+    if command == "plugin":
+        if len(sys.argv) < 3:
+            print("Error: plugin subcommand required", file=sys.stderr)
+            print("Usage: ngen-j plugin <list|install|uninstall> [args...]", file=sys.stderr)
+            print("\nPlugin list options:", file=sys.stderr)
+            print("  --format <json|csv>  Export format (default: table)", file=sys.stderr)
+            print("  --output <file>      Output file (optional, defaults to stdout)", file=sys.stderr)
+            sys.exit(1)
+
+        subcommand = sys.argv[2]
+        client = JenkinsClient()
+
+        if subcommand == "list":
+            # Parse format option
+            args = sys.argv[3:]
+            output_format = None
+            output_file = None
+
+            if '--format' in args:
+                format_idx = args.index('--format')
+                if format_idx + 1 < len(args):
+                    output_format = args[format_idx + 1].lower()
+                    args = args[:format_idx] + args[format_idx + 2:]
+                else:
+                    print("Error: --format requires a value (json or csv)", file=sys.stderr)
+                    sys.exit(1)
+
+            if '--output' in args or '-o' in args:
+                output_flag = '--output' if '--output' in args else '-o'
+                output_idx = args.index(output_flag)
+                if output_idx + 1 < len(args):
+                    output_file = args[output_idx + 1]
+                    args = args[:output_idx] + args[output_idx + 2:]
+                else:
+                    print("Error: --output requires a filename", file=sys.stderr)
+                    sys.exit(1)
+
+            plugins = client.list_plugins()
+            
+            if output_format == 'json':
+                import json
+                output_data = json.dumps(plugins, indent=2)
+                if output_file:
+                    with open(output_file, 'w') as f:
+                        f.write(output_data)
+                    print(f"✅ Plugins exported to {output_file} (JSON format)")
+                else:
+                    print(output_data)
+                sys.exit(0)
+            elif output_format == 'csv':
+                import csv
+                if not plugins:
+                    print("No plugins found.")
+                    sys.exit(0)
+                
+                # Get all possible fields from plugins
+                fieldnames = ['name', 'version', 'enabled', 'display_name', 'description', 'url']
+                
+                if output_file:
+                    with open(output_file, 'w', newline='', encoding='utf-8') as f:
+                        writer = csv.DictWriter(f, fieldnames=fieldnames)
+                        writer.writeheader()
+                        for plugin in plugins:
+                            row = {field: plugin.get(field, '') for field in fieldnames}
+                            row['enabled'] = 'Yes' if row.get('enabled', True) else 'No'
+                            writer.writerow(row)
+                    print(f"✅ Plugins exported to {output_file} (CSV format)")
+                else:
+                    writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
+                    writer.writeheader()
+                    for plugin in plugins:
+                        row = {field: plugin.get(field, '') for field in fieldnames}
+                        row['enabled'] = 'Yes' if row.get('enabled', True) else 'No'
+                        writer.writerow(row)
+                sys.exit(0)
+            else:
+                # Default table format
+                if plugins:
+                    print("Installed Jenkins Plugins:")
+                    print("=" * 100)
+                    print(f"{'Name':<30} {'Version':<20} {'Enabled':<10} {'Display Name':<40}")
+                    print("=" * 100)
+                    for plugin in plugins:
+                        enabled = "Yes" if plugin.get('enabled', True) else "No"
+                        display_name = plugin.get('display_name', plugin.get('name', 'N/A'))
+                        if len(display_name) > 38:
+                            display_name = display_name[:35] + "..."
+                        print(f"{plugin.get('name', 'N/A'):<30} {plugin.get('version', 'N/A'):<20} {enabled:<10} {display_name:<40}")
+                else:
+                    print("No plugins found.")
+                sys.exit(0)
+
+        elif subcommand == "install":
+            if len(sys.argv) < 4:
+                print("Error: plugin name(s) required", file=sys.stderr)
+                print("Usage: ngen-j plugin install <plugin1> [plugin2] ...", file=sys.stderr)
+                sys.exit(1)
+
+            plugin_names = sys.argv[3:]
+            result = client.install_plugins(plugin_names, block=False)
+
+            if result['status'] == 'success':
+                print(f"✅ {result['message']}")
+                print("Note: Plugin installation may take some time. Check Jenkins for installation status.")
+            else:
+                print(f"❌ Failed to install plugins: {result.get('error', 'Unknown error')}")
+                sys.exit(1)
+            sys.exit(0)
+
+        elif subcommand == "uninstall":
+            if len(sys.argv) < 4:
+                print("Error: plugin name(s) required", file=sys.stderr)
+                print("Usage: ngen-j plugin uninstall <plugin1> [plugin2] ...", file=sys.stderr)
+                sys.exit(1)
+
+            plugin_names = sys.argv[3:]
+            result = client.uninstall_plugins(plugin_names)
+
+            if result['status'] == 'success':
+                print(f"✅ {result['message']}")
+                print("Note: Jenkins restart may be required for uninstallation to complete.")
+            else:
+                print(f"❌ Failed to uninstall plugins: {result.get('error', 'Unknown error')}")
+                sys.exit(1)
+            sys.exit(0)
+
+        else:
+            print(f"Error: Unknown plugin subcommand '{subcommand}'", file=sys.stderr)
+            print("Usage: ngen-j plugin <list|install|uninstall> [args...]", file=sys.stderr)
+            sys.exit(1)
 
     # Try to find and execute script
     args = sys.argv[2:]

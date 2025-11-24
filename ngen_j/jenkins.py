@@ -539,3 +539,369 @@ class JenkinsClient:
                 'error': str(e)
             }
 
+    def list_plugins(self) -> list:
+        """List all installed Jenkins plugins."""
+        try:
+            plugins = []
+            for plugin in self.client.plugins:
+                plugin_info = {
+                    'name': getattr(plugin, 'short_name', getattr(plugin, 'name', 'Unknown')),
+                    'version': getattr(plugin, 'version', 'Unknown'),
+                    'enabled': getattr(plugin, 'enabled', True),
+                    'display_name': getattr(plugin, 'display_name', getattr(plugin, 'name', 'Unknown')),
+                    'url': getattr(plugin, 'url', ''),
+                }
+                # Try to get more details from API
+                try:
+                    plugin_json = plugin.api_json()
+                    plugin_info['version'] = plugin_json.get('version', plugin_info['version'])
+                    plugin_info['enabled'] = plugin_json.get('enabled', plugin_info['enabled'])
+                    plugin_info['display_name'] = plugin_json.get('displayName', plugin_info['display_name'])
+                    plugin_info['description'] = plugin_json.get('longName', plugin_json.get('displayName', ''))
+                except:
+                    pass
+                plugins.append(plugin_info)
+            return plugins
+        except Exception as e:
+            print(f"Error listing plugins: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    def install_plugins(self, plugin_names: list, block: bool = False) -> dict:
+        """Install one or more Jenkins plugins."""
+        try:
+            plugins_manager = self.client.plugins
+            plugins_manager.install(*plugin_names, block=block)
+            
+            return {
+                'status': 'success',
+                'plugins': plugin_names,
+                'message': f"Plugins installation initiated: {', '.join(plugin_names)}"
+            }
+        except Exception as e:
+            error_msg = str(e)
+            if '403' in error_msg or 'Forbidden' in error_msg:
+                print(f"Error: Permission denied. Make sure your Jenkins user has permission to install plugins.", file=sys.stderr)
+                print("Required permissions: Overall/Administer or Plugin/Install", file=sys.stderr)
+            else:
+                print(f"Error installing plugins: {e}", file=sys.stderr)
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
+    def uninstall_plugins(self, plugin_names: list) -> dict:
+        """Uninstall one or more Jenkins plugins."""
+        try:
+            plugins_manager = self.client.plugins
+            plugins_manager.uninstall(*plugin_names)
+            
+            return {
+                'status': 'success',
+                'plugins': plugin_names,
+                'message': f"Plugins uninstallation initiated: {', '.join(plugin_names)}"
+            }
+        except Exception as e:
+            error_msg = str(e)
+            if '403' in error_msg or 'Forbidden' in error_msg:
+                print(f"Error: Permission denied. Make sure your Jenkins user has permission to uninstall plugins.", file=sys.stderr)
+                print("Required permissions: Overall/Administer or Plugin/Uninstall", file=sys.stderr)
+            else:
+                print(f"Error uninstalling plugins: {e}", file=sys.stderr)
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
+    def list_credentials(self) -> list:
+        """List all credentials from Jenkins global credentials store."""
+        try:
+            import httpx
+            import json
+            
+            # Jenkins Credentials API endpoint for global domain
+            # Use depth=2 to get full credential details including typeName
+            api_url = f"{self.url}/credentials/store/system/domain/_/api/json?depth=2"
+            
+            response = httpx.get(api_url, auth=self.client._auth)
+            response.raise_for_status()
+            data = response.json()
+            
+            credentials = []
+            creds_list = data.get('credentials', [])
+            
+            for cred in creds_list:
+                # Handle response structure based on actual Jenkins API response
+                if isinstance(cred, dict):
+                    # Get ID (required field)
+                    cred_id = cred.get('id', 'N/A')
+                    
+                    # Get description (may be empty string)
+                    description = cred.get('description', '')
+                    
+                    # Get type name
+                    cred_type = cred.get('typeName', 'Unknown')
+                    
+                    # Get display name
+                    display_name = cred.get('displayName', cred_id)
+                    
+                    # Scope is typically GLOBAL for system domain
+                    scope = cred.get('scope', 'GLOBAL')
+                    
+                    # Normalize type name to readable format
+                    if cred_type and cred_type != 'Unknown':
+                        type_lower = cred_type.lower()
+                        if 'username' in type_lower and 'password' in type_lower:
+                            cred_type = 'Username/Password'
+                        elif 'string' in type_lower or 'secret' in type_lower:
+                            cred_type = 'Secret Text'
+                        elif 'ssh' in type_lower or 'private' in type_lower:
+                            cred_type = 'SSH Key'
+                        elif 'certificate' in type_lower:
+                            cred_type = 'Certificate'
+                        elif 'file' in type_lower:
+                            cred_type = 'Secret File'
+                        # Keep original if no match
+                    
+                    cred_info = {
+                        'id': cred_id,
+                        'description': description,
+                        'type': cred_type,
+                        'scope': scope,
+                        'display_name': display_name
+                    }
+                    credentials.append(cred_info)
+            
+            return credentials
+        except Exception as e:
+            error_msg = str(e)
+            if '403' in error_msg or 'Forbidden' in error_msg:
+                print(f"Error: Permission denied. Make sure your Jenkins user has permission to view credentials.", file=sys.stderr)
+                print("Required permissions: Credentials/View or Overall/Read", file=sys.stderr)
+            elif '404' in error_msg:
+                print(f"Error: Credentials API not found. Make sure Credentials Plugin is installed.", file=sys.stderr)
+            else:
+                print(f"Error listing credentials: {e}", file=sys.stderr)
+            return []
+
+    def create_credential(self, cred_type: str, cred_id: str, description: str = "", 
+                         username: str = None, password: str = None, secret: str = None,
+                         private_key: str = None, private_key_file: str = None, 
+                         passphrase: str = None, force: bool = False) -> dict:
+        """Create a new credential in Jenkins global credentials store."""
+        try:
+            import httpx
+            import xml.etree.ElementTree as ET
+            
+            # Check if credential already exists
+            existing_creds = self.list_credentials()
+            cred_exists = any(c.get('id') == cred_id for c in existing_creds)
+            
+            if cred_exists and not force:
+                return {
+                    'status': 'exists',
+                    'message': f"Credential with ID '{cred_id}' already exists. Use --force to overwrite."
+                }
+            
+            # Get CSRF crumb
+            crumb = None
+            crumb_field = None
+            try:
+                crumb_url = f"{self.url}/crumbIssuer/api/json"
+                crumb_response = httpx.get(crumb_url, auth=self.client._auth)
+                if crumb_response.status_code == 200:
+                    crumb_data = crumb_response.json()
+                    crumb = crumb_data.get('crumb')
+                    crumb_field = crumb_data.get('crumbRequestField', 'Jenkins-Crumb')
+            except:
+                pass
+            
+            # Build XML based on credential type
+            if cred_type in ['username_password', 'username-password']:
+                root = ET.Element('com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl')
+                root.set('plugin', 'credentials')
+                
+                scope = ET.SubElement(root, 'scope')
+                scope.text = 'GLOBAL'
+                
+                id_elem = ET.SubElement(root, 'id')
+                id_elem.text = cred_id
+                
+                desc_elem = ET.SubElement(root, 'description')
+                desc_elem.text = description
+                
+                username_elem = ET.SubElement(root, 'username')
+                username_elem.text = username or ''
+                
+                password_elem = ET.SubElement(root, 'password')
+                password_elem.text = password or ''
+                
+            elif cred_type in ['secret_text', 'secret-text']:
+                root = ET.Element('org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl')
+                root.set('plugin', 'plain-credentials')
+                
+                scope = ET.SubElement(root, 'scope')
+                scope.text = 'GLOBAL'
+                
+                id_elem = ET.SubElement(root, 'id')
+                id_elem.text = cred_id
+                
+                desc_elem = ET.SubElement(root, 'description')
+                desc_elem.text = description
+                
+                secret_elem = ET.SubElement(root, 'secret')
+                secret_elem.text = secret or ''
+                
+            elif cred_type in ['ssh_key', 'ssh-key']:
+                root = ET.Element('com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey')
+                root.set('plugin', 'ssh-credentials')
+                
+                scope = ET.SubElement(root, 'scope')
+                scope.text = 'GLOBAL'
+                
+                id_elem = ET.SubElement(root, 'id')
+                id_elem.text = cred_id
+                
+                desc_elem = ET.SubElement(root, 'description')
+                desc_elem.text = description
+                
+                username_elem = ET.SubElement(root, 'username')
+                username_elem.text = username or ''
+                
+                # Handle private key (from string or file)
+                private_key_content = private_key
+                if private_key_file:
+                    try:
+                        with open(private_key_file, 'r') as f:
+                            private_key_content = f.read()
+                    except Exception as e:
+                        return {
+                            'status': 'error',
+                            'error': f"Could not read private key file: {e}"
+                        }
+                
+                private_key_source = ET.SubElement(root, 'privateKeySource')
+                direct_entry = ET.SubElement(private_key_source, 'class')
+                direct_entry.text = 'com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey$DirectEntryPrivateKeySource'
+                private_key_elem = ET.SubElement(private_key_source, 'privateKey')
+                private_key_elem.text = private_key_content or ''
+                
+                if passphrase:
+                    passphrase_elem = ET.SubElement(root, 'passphrase')
+                    passphrase_elem.text = passphrase
+                
+            else:
+                return {
+                    'status': 'error',
+                    'error': f"Unsupported credential type: {cred_type}. Supported types: username_password, secret_text, ssh_key"
+                }
+            
+            # Convert to XML string
+            xml_str = ET.tostring(root, encoding='unicode')
+            
+            # Create credential via API
+            create_url = f"{self.url}/credentials/store/system/domain/_/createCredentials"
+            
+            headers = {'Content-Type': 'application/xml'}
+            if crumb and crumb_field:
+                headers[crumb_field] = crumb
+            
+            params = {}
+            if cred_exists:
+                # If credential exists and force is True, we need to delete first
+                delete_result = self.delete_credential(cred_id, force=True)
+                if delete_result.get('status') != 'success':
+                    return {
+                        'status': 'error',
+                        'error': f"Could not delete existing credential: {delete_result.get('error', 'Unknown error')}"
+                    }
+            
+            response = httpx.post(create_url, content=xml_str, headers=headers, 
+                                auth=self.client._auth, params=params)
+            response.raise_for_status()
+            
+            return {
+                'status': 'success',
+                'credential_id': cred_id,
+                'message': f"Credential '{cred_id}' created successfully"
+            }
+            
+        except Exception as e:
+            error_msg = str(e)
+            if '403' in error_msg or 'Forbidden' in error_msg:
+                print(f"Error: Permission denied. Make sure your Jenkins user has permission to create credentials.", file=sys.stderr)
+                print("Required permissions: Credentials/Create or Overall/Administer", file=sys.stderr)
+            elif '404' in error_msg:
+                print(f"Error: Credentials API not found. Make sure Credentials Plugin is installed.", file=sys.stderr)
+            else:
+                print(f"Error creating credential: {e}", file=sys.stderr)
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
+    def delete_credential(self, cred_id: str, force: bool = False) -> dict:
+        """Delete a credential from Jenkins global credentials store."""
+        try:
+            import httpx
+            
+            # Check if credential exists
+            existing_creds = self.list_credentials()
+            cred_exists = any(c.get('id') == cred_id for c in existing_creds)
+            
+            if not cred_exists:
+                return {
+                    'status': 'error',
+                    'error': f"Credential with ID '{cred_id}' not found"
+                }
+            
+            if not force:
+                # Ask for confirmation (handled in CLI)
+                pass
+            
+            # Get CSRF crumb
+            crumb = None
+            crumb_field = None
+            try:
+                crumb_url = f"{self.url}/crumbIssuer/api/json"
+                crumb_response = httpx.get(crumb_url, auth=self.client._auth)
+                if crumb_response.status_code == 200:
+                    crumb_data = crumb_response.json()
+                    crumb = crumb_data.get('crumb')
+                    crumb_field = crumb_data.get('crumbRequestField', 'Jenkins-Crumb')
+            except:
+                pass
+            
+            # Delete credential via API
+            delete_url = f"{self.url}/credentials/store/system/domain/_/credential/{cred_id}/doDelete"
+            
+            headers = {}
+            if crumb and crumb_field:
+                headers[crumb_field] = crumb
+            
+            response = httpx.post(delete_url, headers=headers, auth=self.client._auth)
+            response.raise_for_status()
+            
+            return {
+                'status': 'success',
+                'credential_id': cred_id,
+                'message': f"Credential '{cred_id}' deleted successfully"
+            }
+            
+        except Exception as e:
+            error_msg = str(e)
+            if '403' in error_msg or 'Forbidden' in error_msg:
+                print(f"Error: Permission denied. Make sure your Jenkins user has permission to delete credentials.", file=sys.stderr)
+                print("Required permissions: Credentials/Delete or Overall/Administer", file=sys.stderr)
+            elif '404' in error_msg:
+                return {
+                    'status': 'success',
+                    'credential_id': cred_id,
+                    'message': f"Credential '{cred_id}' not found (may have been already deleted)"
+                }
+            else:
+                print(f"Error deleting credential: {e}", file=sys.stderr)
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
