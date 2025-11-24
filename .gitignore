@@ -24,17 +24,21 @@ wheels/
 venv/
 ENV/
 env/
+.venv/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-*
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+.tox/
+.nox/
 
 # Distribution
 *.tar.gz
@@ -42,4 +46,32 @@ htmlcov/
 
 # PyPI credentials
 .pypirc
+
+# ngen-j specific
+# Build artifacts
+ngen-j/build/
+ngen-j/dist/
+ngen-j/*.egg-info/
+ngen-j/*.egg
+
+# Generated/exported files
+*.csv
+!requirements*.csv
+!dependencies*.csv
+
+# Jenkins credentials (stored in ~/.ngen-j/.env, not in repo)
+# No need to ignore as it's in user home directory
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~
 
