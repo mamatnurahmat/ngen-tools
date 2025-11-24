@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ngenctl"
+version = "0.1.14"
+description = "Universal command wrapper package that dispatches to /usr/local/bin/ngenctl-* scripts"
+readme = "README.md"
+requires-python = ">=3.7"
+license = "MIT"
+authors = [
+    {name = "ngenctl contributors"}
+]
+keywords = ["cli", "wrapper", "command", "dispatch"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+[project.scripts]
+ngenctl = "ngenctl.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mamatnurahmat/ngenctl"
+Repository = "https://github.com/mamatnurahmat/ngenctl"
+Issues = "https://github.com/mamatnurahmat/ngenctl/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-dir]
+"" = "."
+ngenctl = "ngenctl"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ngenctl*"]
+
+[tool.setuptools.package-data]
+ngenctl = ["scripts/*"]
+
