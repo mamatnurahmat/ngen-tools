@@ -14,10 +14,10 @@ def get_alias_file_path() -> Path:
     Get the path to the alias configuration file.
     
     Returns:
-        Path to $HOME/.ngenctl/alias.json
+        Path to $HOME/.ngen/alias.json
     """
     home = Path.home()
-    alias_dir = home / ".ngenctl"
+    alias_dir = home / ".ngen"
     alias_file = alias_dir / "alias.json"
     return alias_file
 
@@ -27,17 +27,17 @@ def get_config_file_path() -> Path:
     Get the path to the config configuration file.
     
     Returns:
-        Path to $HOME/.ngenctl/config.json
+        Path to $HOME/.ngen/config.json
     """
     home = Path.home()
-    config_dir = home / ".ngenctl"
+    config_dir = home / ".ngen"
     config_file = config_dir / "config.json"
     return config_file
 
 
 def load_config() -> dict:
     """
-    Load config from $HOME/.ngenctl/config.json.
+    Load config from $HOME/.ngen/config.json.
     Creates directory and file if they don't exist.
     
     Returns:
@@ -76,7 +76,7 @@ def load_config() -> dict:
 
 def load_aliases() -> dict:
     """
-    Load aliases from $HOME/.ngenctl/alias.json.
+    Load aliases from $HOME/.ngen/alias.json.
     Creates directory and file if they don't exist.
     
     Returns:
@@ -115,7 +115,7 @@ def load_aliases() -> dict:
 
 def save_aliases(aliases: dict) -> bool:
     """
-    Save aliases to $HOME/.ngenctl/alias.json.
+    Save aliases to $HOME/.ngen/alias.json.
     
     Args:
         aliases: Dictionary of aliases to save
@@ -182,7 +182,7 @@ def find_script(command: str) -> Path:
     Find the script wrapper for the given command.
     
     Priority:
-    1. /usr/local/bin/ngenctl-{command}
+    1. /usr/local/bin/ngen-{command}
     2. Scripts bundled in the package
     
     Args:
@@ -192,13 +192,13 @@ def find_script(command: str) -> Path:
         Path to the script, or None if not found
     """
     # Check in /usr/local/bin first
-    system_script = Path(f"/usr/local/bin/ngenctl-{command}")
+    system_script = Path(f"/usr/local/bin/ngen-{command}")
     if system_script.exists() and system_script.is_file():
         return system_script
     
     # Check in bundled scripts
     package_dir = Path(__file__).parent
-    bundled_script = package_dir / "scripts" / f"ngenctl-{command}"
+    bundled_script = package_dir / "scripts" / f"ngen-{command}"
     if bundled_script.exists() and bundled_script.is_file():
         return bundled_script
     
@@ -290,9 +290,9 @@ def main():
         # Check /usr/local/bin
         system_bin = Path("/usr/local/bin")
         if system_bin.exists():
-            for script in system_bin.glob("ngenctl-*"):
+            for script in system_bin.glob("ngen-*"):
                 if script.is_file():
-                    command = script.name.replace("ngenctl-", "", 1)
+                    command = script.name.replace("ngen-", "", 1)
                     commands_found.add(command)
                     if command not in command_info:
                         command_info[command] = "script"
@@ -300,9 +300,9 @@ def main():
         package_dir = Path(__file__).parent
         bundled_dir = package_dir / "scripts"
         if bundled_dir.exists():
-            for script in bundled_dir.glob("ngenctl-*"):
+            for script in bundled_dir.glob("ngen-*"):
                 if script.is_file():
-                    command = script.name.replace("ngenctl-", "", 1)
+                    command = script.name.replace("ngen-", "", 1)
                     commands_found.add(command)
                     if command not in command_info:
                         command_info[command] = "script"
@@ -332,7 +332,7 @@ def main():
     # Handle help flags
     if command in ("-h", "--help", "help"):
         print("Usage: ngenctl <command> [args...]", file=sys.stderr)
-        print("\nngenctl is a universal command wrapper that dispatches to scripts at /usr/local/bin/ngenctl-*")
+        print("\nngenctl is a universal command wrapper that dispatches to scripts at /usr/local/bin/ngen-*")
         print("\nExamples:")
         print("  ngenctl rancher --help")
         print("  ngenctl git clone <repo>")
@@ -368,7 +368,7 @@ def main():
     
     # Command not found
     print(f"Error: command '{command}' not found", file=sys.stderr)
-    print(f"Expected script at: /usr/local/bin/ngenctl-{command}", file=sys.stderr)
+    print(f"Expected script at: /usr/local/bin/ngen-{command}", file=sys.stderr)
     if command in config:
         print(f"Or environment command '{config[command]}' from config.json (not found in PATH)", file=sys.stderr)
     sys.exit(1)

@@ -35,7 +35,7 @@ class PostInstallCommand(install):
             try:
                 target_dir.mkdir(parents=True, exist_ok=True)
                 
-                for script_file in package_dir.glob("ngenctl-*"):
+                for script_file in package_dir.glob("ngen-*"):
                     if script_file.is_file():
                         target_script = target_dir / script_file.name
                         import shutil

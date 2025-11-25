@@ -410,10 +410,10 @@ except Exception as e:
     print_info "  Test 5: Check bundled scripts..."
     scripts_dir="ngenctl/scripts"
     if [ -d "$scripts_dir" ]; then
-        script_count=$(find "$scripts_dir" -name "ngenctl-*" -type f | wc -l)
+        script_count=$(find "$scripts_dir" -name "ngen-*" -type f | wc -l)
         if [ $script_count -gt 0 ]; then
             print_info "    ✅ Found $script_count bundled script(s)"
-            find "$scripts_dir" -name "ngenctl-*" -type f -exec basename {} \; | while read script; do
+            find "$scripts_dir" -name "ngen-*" -type f -exec basename {} \; | while read script; do
                 print_info "      - $script"
             done
             ((test_passed++))
