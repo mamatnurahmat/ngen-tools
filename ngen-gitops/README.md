@@ -40,34 +40,35 @@ Both `ngen-gitops` and `gitops` commands will be available after installation.
 
 ### 1. Configuration
 
-On first run, ngen-gitops creates a config file at `~/.ngen-gitops/config.json`:
+On first run, ngen-gitops creates a config file at `~/.ngen-gitops/.env`:
 
-```json
-{
-  "bitbucket": {
-    "username": "",
-    "app_password": "",
-    "organization": "loyaltoid"
-  },
-  "server": {
-    "host": "0.0.0.0",
-    "port": 8080
-  },
-  "git": {
-    "default_remote": "bitbucket.org",
-    "default_org": "loyaltoid"
-  },
-  "notifications": {
-    "teams_webhook": ""
-  }
-}
+```bash
+# ngen-gitops Configuration
+
+# Bitbucket Credentials
+BITBUCKET_USER=
+BITBUCKET_APP_PASSWORD=
+BITBUCKET_ORG=loyaltoid
+
+# Server Settings
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8080
+
+# Git Settings
+GIT_DEFAULT_REMOTE=bitbucket.org
+GIT_DEFAULT_ORG=loyaltoid
+
+# Notifications
+TEAMS_WEBHOOK=
 ```
 
 **Update the config with your credentials:**
 
 1. Go to Bitbucket Settings → App passwords
 2. Create a new app password with repository read/write permissions
-3. Update `~/.ngen-gitops/config.json` with your username and app password
+1. Go to Bitbucket Settings → App passwords
+2. Create a new app password with repository read/write permissions
+3. Update `~/.ngen-gitops/.env` with your username and app password
 
 **Or use environment variables:**
 
@@ -83,14 +84,10 @@ export BITBUCKET_ORG="your-organization"
 export TEAMS_WEBHOOK="https://your-org.webhook.office.com/webhookb2/..."
 ```
 
-Or add it to `~/.ngen-gitops/config.json`:
+Or add it to `~/.ngen-gitops/.env`:
 
-```json
-{
-  "notifications": {
-    "teams_webhook": "https://your-org.webhook.office.com/webhookb2/..."
-  }
-}
+```bash
+TEAMS_WEBHOOK="https://your-org.webhook.office.com/webhookb2/..."
 ```
 
 When configured, you'll receive Microsoft Teams notifications for:
@@ -108,7 +105,7 @@ gitops config
 **Output:**
 ```
 📋 ngen-gitops Configuration
-   Config file: /home/user/.ngen-gitops/config.json
+   Config file: /home/user/.ngen-gitops/.env
 
 Bitbucket:
    Username: your-username
@@ -721,48 +718,49 @@ print(response.json())
 
 ### Config File Location
 
-`~/.ngen-gitops/config.json`
+### Config File Location
+
+`~/.ngen-gitops/.env`
 
 ### Config Structure
 
-```json
-{
-  "bitbucket": {
-    "username": "your-bitbucket-username",
-    "app_password": "your-app-password",
-    "organization": "your-org-name"
-  },
-  "server": {
-    "host": "0.0.0.0",
-    "port": 8080
-  },
-  "git": {
-    "default_remote": "bitbucket.org",
-    "default_org": "your-org-name"
-  },
-  "notifications": {
-    "teams_webhook": "https://your-org.webhook.office.com/webhookb2/..."
-  }
-}
+The configuration uses standard environment variable format (key=value).
+
+```bash
+# Bitbucket
+BITBUCKET_USER=your-username
+BITBUCKET_APP_PASSWORD=your-app-password
+BITBUCKET_ORG=your-org
+
+# Server
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8080
+
+# Git
+GIT_DEFAULT_REMOTE=bitbucket.org
+GIT_DEFAULT_ORG=your-org
+
+# Notifications
+TEAMS_WEBHOOK=https://your-org.webhook.office.com/webhookb2/...
 ```
 
 ### Configuration Options
 
 #### Bitbucket Settings
-- `username`: Your Bitbucket username
-- `app_password`: Bitbucket app password (Settings → App passwords)
-- `organization`: Default organization for repositories
+- `BITBUCKET_USER`: Your Bitbucket username
+- `BITBUCKET_APP_PASSWORD`: Bitbucket app password
+- `BITBUCKET_ORG`: Default organization
 
 #### Server Settings
-- `host`: Server bind address (default: `0.0.0.0`)
-- `port`: Server port (default: `8080`)
+- `SERVER_HOST`: Server bind address
+- `SERVER_PORT`: Server port
 
 #### Git Settings
-- `default_remote`: Default git remote (`bitbucket.org`, `github.com`, `gitlab.com`)
-- `default_org`: Default organization/user for git operations
+- `GIT_DEFAULT_REMOTE`: Default git remote
+- `GIT_DEFAULT_ORG`: Default organization/user
 
 #### Notifications Settings
-- `teams_webhook`: Microsoft Teams webhook URL for notifications (optional)
+- `TEAMS_WEBHOOK`: Microsoft Teams webhook URL
 
 ### Environment Variables
 
@@ -851,7 +849,7 @@ gitops --help
 **Problem:** `Bitbucket credentials not configured`
 
 **Solution:**
-1. Check config file exists: `~/.ngen-gitops/config.json`
+1. Check config file exists: `~/.ngen-gitops/.env`
 2. Verify credentials are set correctly
 3. Or set environment variables: `BITBUCKET_USER` and `BITBUCKET_APP_PASSWORD`
 

@@ -39,10 +39,12 @@ from .git_wrapper import (
 def cmd_create_branch(args):
     """Handle create-branch command."""
     try:
+        user = get_current_user()
         result = create_branch(
             repo=args.repo,
             src_branch=args.src_branch,
-            dest_branch=args.dest_branch
+            dest_branch=args.dest_branch,
+            user=user
         )
         
         if args.json:
@@ -71,12 +73,14 @@ def cmd_create_branch(args):
 def cmd_set_image_yaml(args):
     """Handle set-image-yaml command."""
     try:
+        user = get_current_user()
         result = set_image_in_yaml(
             repo=args.repo,
             refs=args.refs,
             yaml_path=args.yaml_path,
             image=args.image,
-            dry_run=args.dry_run
+            dry_run=args.dry_run,
+            user=user
         )
         
         if args.json:
@@ -105,11 +109,13 @@ def cmd_set_image_yaml(args):
 def cmd_pull_request(args):
     """Handle pull-request command."""
     try:
+        user = get_current_user()
         result = create_pull_request(
             repo=args.repo,
             src_branch=args.src_branch,
             dest_branch=args.dest_branch,
-            delete_after_merge=args.delete_after_merge
+            delete_after_merge=args.delete_after_merge,
+            user=user
         )
         
         if args.json:
@@ -138,9 +144,11 @@ def cmd_pull_request(args):
 def cmd_merge(args):
     """Handle merge command."""
     try:
+        user = get_current_user()
         result = merge_pull_request(
             pr_url=args.pr_url,
-            delete_after_merge=args.delete_after_merge
+            delete_after_merge=args.delete_after_merge,
+            user=user
         )
         
         if args.json:

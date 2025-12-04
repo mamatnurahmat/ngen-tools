@@ -37,7 +37,8 @@ def create_branch(
     dest_branch: str,
     username: Optional[str] = None,
     app_password: Optional[str] = None,
-    org: Optional[str] = None
+    org: Optional[str] = None,
+    user: Optional[str] = None
 ) -> Dict[str, Any]:
     """Create a new branch in Bitbucket repository from source branch.
     
@@ -188,7 +189,8 @@ def set_image_in_yaml(
     dry_run: bool = False,
     username: Optional[str] = None,
     app_password: Optional[str] = None,
-    org: Optional[str] = None
+    org: Optional[str] = None,
+    user: Optional[str] = None
 ) -> Dict[str, Any]:
     """Update image reference inside YAML file in Bitbucket repo.
     
@@ -353,7 +355,8 @@ def create_pull_request(
     delete_after_merge: bool = False,
     username: Optional[str] = None,
     app_password: Optional[str] = None,
-    org: Optional[str] = None
+    org: Optional[str] = None,
+    user: Optional[str] = None
 ) -> Dict[str, Any]:
     """Create a pull request in Bitbucket repository.
     

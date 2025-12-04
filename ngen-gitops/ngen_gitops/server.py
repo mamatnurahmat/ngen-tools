@@ -61,7 +61,6 @@ class K8sPRRequest(BaseModel):
     image: str
     approve_merge: bool = False
     repo: str = "gitops-k8s"
-    user: Optional[str] = None
 
 
 # Create FastAPI app
