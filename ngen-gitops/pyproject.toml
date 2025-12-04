@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ngen-gitops"
-version = "0.1.7"
+version = "0.1.8"
 description = "GitOps CLI and web server for Bitbucket operations"
 readme = "README.md"
 requires-python = ">=3.7"
