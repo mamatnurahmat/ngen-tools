@@ -354,6 +354,33 @@ gitops merge https://bitbucket.org/org/my-app/pull-requests/42
    Merge commit: abc1234
 ```
 
+#### Kubernetes PR Workflow
+
+Run a complete GitOps workflow: Create Branch -> Update Image -> Create PR -> Merge (optional).
+
+```bash
+gitops k8s-pr <cluster> <namespace> <deploy> <image> [--approve-merge] [--repo REPO]
+```
+
+**Arguments:**
+- `cluster`: Source branch (e.g., cluster name like `k8s-cluster-1`)
+- `namespace`: Kubernetes namespace
+- `deploy`: Deployment name
+- `image`: New image tag
+- `--approve-merge`: Automatically merge the PR if successful
+- `--repo`: Repository name (default: `gitops-k8s`)
+
+**Example:**
+```bash
+gitops k8s-pr main my-ns my-app myregistry/app:v2 --approve-merge
+```
+
+**Workflow Steps:**
+1. Creates branch `my-ns/my-app_deployment.yaml` from `main`
+2. Updates image in `my-ns/my-app_deployment.yaml` file
+3. Creates PR from new branch to `main`
+4. Merges PR (if `--approve-merge` is set)
+
 #### Start Web Server
 
 Start the REST API server:
@@ -568,6 +595,37 @@ curl -X POST http://localhost:8080/v1/gitops/merge \
   }'
 ```
 
+#### 5. Kubernetes PR Workflow
+
+**Endpoint:** `POST /v1/gitops/k8s-pr`
+
+**Request:**
+```json
+{
+  "cluster": "main",
+  "namespace": "my-ns",
+  "deploy": "my-app",
+  "image": "myregistry/app:v2",
+  "approve_merge": true,
+  "repo": "gitops-k8s"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "steps": [
+    {"name": "create_branch", "result": {...}},
+    {"name": "set_image", "result": {...}},
+    {"name": "create_pr", "result": {...}},
+    {"name": "merge_pr", "result": {...}}
+  ],
+  "pr_url": "https://bitbucket.org/...",
+  "message": "Workflow completed successfully (merged)"
+}
+```
+
 ### API Documentation
 
 When the server is running, visit:
@@ -725,6 +783,7 @@ Override config with environment variables:
 | `gitops set-image-yaml` | Update image in YAML file |
 | `gitops pull-request` | Create a pull request |
 | `gitops merge` | Merge a pull request |
+| `gitops k8s-pr` | Run complete K8s GitOps workflow |
 | `gitops server` | Start REST API server |
 | `gitops config` | Show configuration |
 

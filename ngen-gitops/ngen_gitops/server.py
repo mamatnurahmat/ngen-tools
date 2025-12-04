@@ -17,6 +17,7 @@ from .bitbucket import (
     set_image_in_yaml,
     create_pull_request,
     merge_pull_request,
+    run_k8s_pr_workflow,
     GitOpsError
 )
 
@@ -52,6 +53,17 @@ class MergeRequest(BaseModel):
     delete_after_merge: bool = False
 
 
+class K8sPRRequest(BaseModel):
+    """Request model for k8s-pr endpoint."""
+    cluster: str
+    namespace: str
+    deploy: str
+    image: str
+    approve_merge: bool = False
+    repo: str = "gitops-k8s"
+    user: Optional[str] = None
+
+
 # Create FastAPI app
 app = FastAPI(
     title="ngen-gitops API",
@@ -81,7 +93,8 @@ async def root():
             "create_branch": "POST /v1/gitops/create-branch",
             "set_image_yaml": "POST /v1/gitops/set-image-yaml",
             "pull_request": "POST /v1/gitops/pull-request",
-            "merge": "POST /v1/gitops/merge"
+            "merge": "POST /v1/gitops/merge",
+            "k8s_pr": "POST /v1/gitops/k8s-pr"
         },
         "docs": "/docs"
     }

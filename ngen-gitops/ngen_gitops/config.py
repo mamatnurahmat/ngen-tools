@@ -192,3 +192,31 @@ def get_teams_webhook() -> Optional[str]:
     notifications = config.get('notifications', {})
     webhook = notifications.get('teams_webhook', '')
     return webhook if webhook else None
+
+
+def get_current_user() -> str:
+    """Get current user for attribution.
+    
+    Returns:
+        str: User name (from git config or system user)
+    """
+    # Try git config first
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['git', 'config', 'user.name'], 
+            capture_output=True, 
+            text=True, 
+            check=False
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+        
+    # Fallback to system user
+    try:
+        import getpass
+        return getpass.getuser()
+    except Exception:
+        return "unknown"

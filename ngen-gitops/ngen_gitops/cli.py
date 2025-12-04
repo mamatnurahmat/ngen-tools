@@ -13,6 +13,7 @@ from .bitbucket import (
     set_image_in_yaml,
     create_pull_request,
     merge_pull_request,
+    run_k8s_pr_workflow,
     GitOpsError
 )
 from .config import (
@@ -21,7 +22,8 @@ from .config import (
     config_exists,
     get_bitbucket_credentials,
     get_default_remote,
-    get_default_org
+    get_default_org,
+    get_current_user
 )
 from .git_wrapper import (
     git_clone,
@@ -161,6 +163,41 @@ def cmd_merge(args):
             print(json.dumps({'success': False, 'error': str(e)}, indent=2))
         else:
             print(f"❌ Unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_k8s_pr(args):
+    """Handle k8s-pr command."""
+    try:
+        user = get_current_user()
+        
+        result = run_k8s_pr_workflow(
+            cluster=args.cluster,
+            namespace=args.namespace,
+            deploy=args.deploy,
+            image=args.image,
+            approve_merge=args.approve_merge,
+            repo=args.repo,
+            user=user
+        )
+        
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result['success']:
+                print(f"\n✅ {result['message']}")
+                if result.get('pr_url'):
+                    print(f"   PR URL: {result['pr_url']}")
+            else:
+                print(f"\n❌ {result['message']}")
+        
+        sys.exit(0 if result['success'] else 1)
+        
+    except Exception as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -411,6 +448,20 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-gitops
                              help='Delete source branch after merge')
     parser_merge.add_argument('--json', action='store_true', help='Output as JSON')
     parser_merge.set_defaults(func=cmd_merge)
+    
+    # k8s-pr command
+    parser_k8s_pr = subparsers.add_parser(
+        'k8s-pr',
+        help='Run complete K8s GitOps workflow (Branch -> Image -> PR -> Merge)'
+    )
+    parser_k8s_pr.add_argument('cluster', help='Source branch (e.g., cluster name)')
+    parser_k8s_pr.add_argument('namespace', help='Kubernetes namespace')
+    parser_k8s_pr.add_argument('deploy', help='Deployment name')
+    parser_k8s_pr.add_argument('image', help='New image tag')
+    parser_k8s_pr.add_argument('--approve-merge', action='store_true', help='Auto-merge the PR')
+    parser_k8s_pr.add_argument('--repo', default='gitops-k8s', help='Repository name (default: gitops-k8s)')
+    parser_k8s_pr.add_argument('--json', action='store_true', help='Output as JSON')
+    parser_k8s_pr.set_defaults(func=cmd_k8s_pr)
     
     # server command
     parser_server = subparsers.add_parser(

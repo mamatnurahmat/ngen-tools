@@ -134,7 +134,7 @@ def create_branch(
         result['branch_url'] = f"https://bitbucket.org/{org}/{repo}/branch/{dest_branch}"
         
         # Send Teams notification
-        notify_branch_created(repo, src_branch, dest_branch, result['branch_url'])
+        notify_branch_created(repo, src_branch, dest_branch, result['branch_url'], user=user)
         
         return result
         
@@ -329,7 +329,7 @@ def set_image_in_yaml(
         result['commit'] = commit.stdout.strip()
         
         # Send Teams notification
-        notify_image_updated(repo, refs, yaml_path, image, commit.stdout.strip())
+        notify_image_updated(repo, refs, yaml_path, image, commit.stdout.strip(), user=user)
         
         return result
         
@@ -465,7 +465,7 @@ def create_pull_request(
         result['message'] = f"Pull request #{pr_id} created successfully"
         
         # Send Teams notification
-        notify_pr_created(repo, src_branch, dest_branch, pr_id, web_url)
+        notify_pr_created(repo, src_branch, dest_branch, pr_id, web_url, user=user)
         
         return result
         
@@ -482,7 +482,8 @@ def merge_pull_request(
     pr_url: str,
     delete_after_merge: bool = False,
     username: Optional[str] = None,
-    app_password: Optional[str] = None
+    app_password: Optional[str] = None,
+    user: Optional[str] = None
 ) -> Dict[str, Any]:
     """Merge a pull request from Bitbucket PR URL.
     
@@ -607,7 +608,7 @@ def merge_pull_request(
         result['message'] = f"Pull request #{pr_id} merged successfully"
         
         # Send Teams notification
-        notify_pr_merged(repo, pr_id, source_branch, dest_branch, short_hash)
+        notify_pr_merged(repo, pr_id, source_branch, dest_branch, short_hash, user=user)
         
         return result
         
@@ -618,3 +619,112 @@ def merge_pull_request(
     except Exception as e:
         result['message'] = str(e)
         raise
+
+
+def run_k8s_pr_workflow(
+    cluster: str,
+    namespace: str,
+    deploy: str,
+    image: str,
+    approve_merge: bool = False,
+    repo: str = "gitops-k8s",
+    user: Optional[str] = None
+) -> Dict[str, Any]:
+    """Run complete K8s PR workflow.
+    
+    Steps:
+    1. Create branch: {namespace}/{deploy}_deployment.yaml
+    2. Set image in YAML
+    3. Create Pull Request
+    4. (Optional) Merge Pull Request
+    
+    Args:
+        cluster: Source branch (e.g., cluster name)
+        namespace: Kubernetes namespace
+        deploy: Deployment name
+        image: New image tag
+        approve_merge: Whether to auto-merge the PR
+        repo: Repository name (default: gitops-k8s)
+        user: User triggering the workflow
+        
+    Returns:
+        dict: Workflow results
+    """
+    dest_branch = f"{namespace}/{deploy}_deployment.yaml"
+    yaml_path = f"{namespace}/{deploy}_deployment.yaml"
+    
+    print(f"🚀 Starting K8s PR Workflow for {deploy} in {namespace}")
+    print(f"   Repo: {repo}")
+    print(f"   Cluster/Source: {cluster}")
+    print(f"   Image: {image}")
+    print(f"   User: {user or 'unknown'}")
+    
+    workflow_result = {
+        "success": False,
+        "steps": [],
+        "pr_url": "",
+        "message": ""
+    }
+    
+    try:
+        # Step 1: Create Branch
+        print("\n[Step 1/4] Creating branch...")
+        branch_res = create_branch(
+            repo=repo,
+            src_branch=cluster,
+            dest_branch=dest_branch,
+            user=user
+        )
+        workflow_result["steps"].append({"name": "create_branch", "result": branch_res})
+        
+        # Step 2: Set Image
+        print("\n[Step 2/4] Updating image in YAML...")
+        image_res = set_image_in_yaml(
+            repo=repo,
+            refs=dest_branch,
+            yaml_path=yaml_path,
+            image=image,
+            user=user
+        )
+        workflow_result["steps"].append({"name": "set_image", "result": image_res})
+        
+        if image_res.get('skipped'):
+            print("⚠️  Image already up to date, stopping workflow.")
+            workflow_result["success"] = True
+            workflow_result["message"] = "Image already up to date"
+            return workflow_result
+
+        # Step 3: Create PR
+        print("\n[Step 3/4] Creating Pull Request...")
+        pr_res = create_pull_request(
+            repo=repo,
+            src_branch=dest_branch,
+            dest_branch=cluster,
+            delete_after_merge=True,
+            user=user
+        )
+        workflow_result["steps"].append({"name": "create_pr", "result": pr_res})
+        workflow_result["pr_url"] = pr_res.get("pr_url")
+        
+        # Step 4: Merge (Optional)
+        if approve_merge:
+            print("\n[Step 4/4] Merging Pull Request...")
+            merge_res = merge_pull_request(
+                pr_url=pr_res["pr_url"],
+                delete_after_merge=True,
+                user=user
+            )
+            workflow_result["steps"].append({"name": "merge_pr", "result": merge_res})
+            workflow_result["message"] = "Workflow completed successfully (merged)"
+        else:
+            print("\n[Step 4/4] Skipping merge (use --approve-merge to auto-merge)")
+            workflow_result["message"] = "Workflow completed successfully (PR created)"
+            
+        workflow_result["success"] = True
+        return workflow_result
+        
+    except Exception as e:
+        print(f"\n❌ Workflow failed: {str(e)}")
+        workflow_result["message"] = str(e)
+        workflow_result["success"] = False
+        return workflow_result
