@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ngen-gitops"
+version = "0.1.2"
+description = "GitOps CLI and web server for Bitbucket operations"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+authors = [
+    {name = "ngen-gitops contributors"}
+]
+keywords = ["cli", "gitops", "bitbucket", "devops", "api", "ci-cd"]
+dependencies = [
+    "requests>=2.25.0",
+    "fastapi>=0.68.0",
+    "uvicorn>=0.15.0",
+    "pyyaml>=5.4.0",
+    "python-dotenv>=0.19.0",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+[project.scripts]
+ngen-gitops = "ngen_gitops.cli:main"
+gitops = "ngen_gitops.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mamatnurahmat/ngen-gitops"
+Repository = "https://github.com/mamatnurahmat/ngen-gitops"
+Issues = "https://github.com/mamatnurahmat/ngen-gitops/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-dir]
+"" = "."
+ngen_gitops = "ngen_gitops"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ngen_gitops*"]
