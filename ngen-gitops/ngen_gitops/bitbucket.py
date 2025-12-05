@@ -128,6 +128,69 @@ def list_pull_requests(
         raise
 
 
+def get_pull_request_diff(
+    repo: str,
+    pr_id: int,
+    username: Optional[str] = None,
+    app_password: Optional[str] = None,
+    org: Optional[str] = None
+) -> Dict[str, Any]:
+    """Get diff for a specific pull request.
+    
+    Args:
+        repo: Repository name
+        pr_id: Pull request ID
+        username: Bitbucket username (optional)
+        app_password: Bitbucket app password (optional)
+        org: Bitbucket organization (optional)
+    
+    Returns:
+        dict: Result with PR diff content
+    
+    Raises:
+        GitOpsError: If API request fails
+    """
+    # Get credentials
+    if not username or not app_password or not org:
+        creds = get_bitbucket_credentials()
+        username = username or creds['username']
+        app_password = app_password or creds['app_password']
+        org = org or creds['organization']
+    
+    result = {
+        'success': False,
+        'repository': repo,
+        'pr_id': pr_id,
+        'diff': '',
+        'message': ''
+    }
+    
+    try:
+        # Fetch diff from API
+        diff_url = f"{BITBUCKET_API_BASE}/{org}/{repo}/pullrequests/{pr_id}/diff"
+        
+        resp = requests.get(diff_url, auth=(username, app_password), timeout=30)
+        
+        if resp.status_code == 404:
+            raise GitOpsError(f"Pull request #{pr_id} not found in repository '{repo}'")
+        
+        resp.raise_for_status()
+        
+        result['success'] = True
+        result['diff'] = resp.text
+        result['message'] = f"Retrieved diff for PR #{pr_id}"
+        
+        return result
+        
+    except requests.exceptions.RequestException as e:
+        error_msg = f"API request failed: {str(e)}"
+        result['message'] = error_msg
+        raise GitOpsError(error_msg) from e
+    except Exception as e:
+        result['message'] = str(e)
+        raise
+
+
 def create_branch(
     repo: str,
     src_branch: str,

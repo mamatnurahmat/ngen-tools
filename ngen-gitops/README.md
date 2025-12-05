@@ -11,7 +11,10 @@ GitOps CLI and web server for Bitbucket operations with general git commands sup
 ### GitOps Operations (Bitbucket)
 - 🌿 **Branch Management**: Create branches from source branches
 - 🖼️ **Image Updates**: Update container images in Kubernetes YAML files
-- 🔄 **Pull Requests**: Create and merge pull requests automatically
+- 🔄 **Pull Requests**: Create, list, and merge pull requests automatically
+- 📋 **PR List**: List pull requests with status filtering (open, merged, declined)
+- 📄 **PR Diff**: View diff/changes for specific pull requests
+- 🚀 **K8s Workflow**: Complete K8s GitOps workflow with interactive mode
 - 🌐 **Web API**: REST API server with FastAPI for integration
 
 ### Git Commands (Multi-Remote)
@@ -24,7 +27,8 @@ GitOps CLI and web server for Bitbucket operations with general git commands sup
 
 ### General
 - 🔐 **Secure**: Uses app passwords for authentication
-- 📦 **Easy Configuration**: Simple JSON config file
+- 🔑 **Netrc Support**: Automatically uses `~/.netrc` credentials if available
+- 📦 **Easy Configuration**: Simple `.env` config file
 - 🚀 **Dual Command**: Use `ngen-gitops` or `gitops` command
 - 💻 **PyPI Package**: Install with pip
 
@@ -39,6 +43,27 @@ Both `ngen-gitops` and `gitops` commands will be available after installation.
 ## Quick Start
 
 ### 1. Configuration
+
+ngen-gitops supports multiple credential sources with the following priority:
+
+1. **Environment variables** (highest priority)
+2. **`~/.ngen-gitops/.env` file**
+3. **`~/.netrc` file** (automatic fallback)
+
+#### Option A: Using ~/.netrc (Recommended for existing setups)
+
+If you already have a `~/.netrc` file configured for Bitbucket, ngen-gitops will automatically use it:
+
+```bash
+# ~/.netrc
+machine bitbucket.org
+  login your-username
+  password your-app-password
+```
+
+No additional configuration needed! Just run `gitops config` to verify.
+
+#### Option B: Using ~/.ngen-gitops/.env
 
 On first run, ngen-gitops creates a config file at `~/.ngen-gitops/.env`:
 
@@ -66,11 +91,9 @@ TEAMS_WEBHOOK=
 
 1. Go to Bitbucket Settings → App passwords
 2. Create a new app password with repository read/write permissions
-1. Go to Bitbucket Settings → App passwords
-2. Create a new app password with repository read/write permissions
 3. Update `~/.ngen-gitops/.env` with your username and app password
 
-**Or use environment variables:**
+#### Option C: Using environment variables
 
 ```bash
 export BITBUCKET_USER="your-username"
@@ -351,9 +374,92 @@ gitops merge https://bitbucket.org/org/my-app/pull-requests/42
    Merge commit: abc1234
 ```
 
-#### Kubernetes PR Workflow
+#### List Pull Requests
+
+List pull requests in a repository with status filtering:
+
+```bash
+gitops pr <repo> [--status STATUS]
+```
+
+**Status options:**
+- `open` (default)
+- `merged`
+- `declined`
+- `draft`
+
+**Examples:**
+```bash
+# List open PRs (default)
+gitops pr my-app
+
+# List merged PRs
+gitops pr my-app --status merged
+
+# List declined PRs
+gitops pr my-app --status declined
+
+# JSON output
+gitops pr my-app --json
+```
+
+**Output:**
+```
+📋 Pull Requests in my-app (status: open)
+
+  #ID    | Source Branch                            | Destination                              | Author                                   | Created                                 
+  -------+------------------------------------------+------------------------------------------+------------------------------------------+-----------------------------------------
+  #123   | feature/login                            | develop                                  | John Doe                                 | 2024-12-01                              
+  #124   | fix/bug-456                              | main                                     | Jane Smith                               | 2024-12-02                              
+
+Total: 2 pull request(s)
+```
+
+#### View Pull Request Diff
+
+View the diff/changes for a specific pull request:
+
+```bash
+gitops pr <repo> --diff <PR_ID>
+```
+
+**Example:**
+```bash
+gitops pr my-app --diff 123
+```
+
+**Output:**
+```
+📄 Pull Request #123 Diff in my-app
+================================================================================
+diff --git a/src/app.py b/src/app.py
+index abc1234..def5678 100644
+--- a/src/app.py
++++ b/src/app.py
+@@ -10,7 +10,7 @@ def main():
+-    print("Hello World")
++    print("Hello, GitOps!")
+...
+```
+
+#### Kubernetes PR Workflow (Interactive Mode)
 
 Run a complete GitOps workflow: Create Branch -> Update Image -> Create PR -> Merge (optional).
+
+**Interactive Mode** - Run without arguments to be prompted:
+
+```bash
+gitops k8s-pr
+```
+
+The command will interactively prompt for:
+- 🔧 Cluster (source branch)
+- 🔧 Kubernetes namespace
+- 🔧 Deployment name
+- 🔧 New image tag
+- ❓ Auto-merge the PR? [y/N]
+
+**Non-Interactive Mode** - Provide all arguments:
 
 ```bash
 gitops k8s-pr <cluster> <namespace> <deploy> <image> [--approve-merge] [--repo REPO]
@@ -364,12 +470,22 @@ gitops k8s-pr <cluster> <namespace> <deploy> <image> [--approve-merge] [--repo R
 - `namespace`: Kubernetes namespace
 - `deploy`: Deployment name
 - `image`: New image tag
-- `--approve-merge`: Automatically merge the PR if successful
+- `--approve-merge`: Automatically merge the PR (skip confirmation prompt)
 - `--repo`: Repository name (default: `gitops-k8s`)
 
-**Example:**
+**Examples:**
 ```bash
+# Interactive mode
+gitops k8s-pr
+
+# Non-interactive with auto-merge
 gitops k8s-pr main my-ns my-app myregistry/app:v2 --approve-merge
+
+# Non-interactive without auto-merge (will prompt)
+gitops k8s-pr main my-ns my-app myregistry/app:v2
+
+# Custom repository
+gitops k8s-pr main my-ns my-app myregistry/app:v2 --repo my-gitops-repo
 ```
 
 **Workflow Steps:**

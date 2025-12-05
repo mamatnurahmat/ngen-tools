@@ -15,6 +15,7 @@ from .bitbucket import (
     merge_pull_request,
     run_k8s_pr_workflow,
     list_pull_requests,
+    get_pull_request_diff,
     GitOpsError
 )
 from .config import (
@@ -178,6 +179,23 @@ def cmd_merge(args):
 def cmd_pr_list(args):
     """Handle pr command (list pull requests)."""
     try:
+        # If --diff is specified, show diff for that PR
+        if args.diff:
+            result = get_pull_request_diff(
+                repo=args.repo,
+                pr_id=args.diff
+            )
+            
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                print(f"\n📄 Pull Request #{args.diff} Diff in {args.repo}")
+                print("=" * 80)
+                print(result['diff'])
+            
+            sys.exit(0 if result['success'] else 1)
+        
+        # Otherwise, list PRs
         result = list_pull_requests(
             repo=args.repo,
             status=args.status
@@ -226,16 +244,43 @@ def cmd_pr_list(args):
 
 
 def cmd_k8s_pr(args):
-    """Handle k8s-pr command."""
+    """Handle k8s-pr command with interactive prompts for missing arguments."""
     try:
         user = get_current_user()
+
+        # Prompt for missing positional arguments
+        def prompt_if_missing(value, prompt_msg):
+            if not value:
+                try:
+                    return input(prompt_msg).strip()
+                except EOFError:
+                    return ''
+            return value
+
+        cluster = prompt_if_missing(args.cluster, '🔧 Enter cluster (source branch): ')
+        namespace = prompt_if_missing(args.namespace, '🔧 Enter Kubernetes namespace: ')
+        deploy = prompt_if_missing(args.deploy, '🔧 Enter deployment name: ')
+        image = prompt_if_missing(args.image, '🔧 Enter new image tag: ')
         
+        # Handle approve_merge
+        approve_merge = args.approve_merge
+        if not approve_merge:
+            try:
+                answer = input('❓ Auto-merge the PR? [y/N]: ').strip().lower()
+                if answer == 'y':
+                    approve_merge = True
+            except EOFError:
+                pass
+
+        if not all([cluster, namespace, deploy, image]):
+            raise GitOpsError('All arguments (cluster, namespace, deploy, image) are required for k8s-pr workflow')
+
         result = run_k8s_pr_workflow(
-            cluster=args.cluster,
-            namespace=args.namespace,
-            deploy=args.deploy,
-            image=args.image,
-            approve_merge=args.approve_merge,
+            cluster=cluster,
+            namespace=namespace,
+            deploy=deploy,
+            image=image,
+            approve_merge=approve_merge,
             repo=args.repo,
             user=user
         )
@@ -520,6 +565,7 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-gitops
         choices=['open', 'merged', 'declined', 'draft'],
         help='Filter by status (default: open)'
     )
+    parser_pr_list.add_argument('--diff', type=int, metavar='PR_ID', help='Show diff for specific PR ID')
     parser_pr_list.add_argument('--json', action='store_true', help='Output as JSON')
     parser_pr_list.set_defaults(func=cmd_pr_list)
     
@@ -528,10 +574,10 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-gitops
         'k8s-pr',
         help='Run complete K8s GitOps workflow (Branch -> Image -> PR -> Merge)'
     )
-    parser_k8s_pr.add_argument('cluster', help='Source branch (e.g., cluster name)')
-    parser_k8s_pr.add_argument('namespace', help='Kubernetes namespace')
-    parser_k8s_pr.add_argument('deploy', help='Deployment name')
-    parser_k8s_pr.add_argument('image', help='New image tag')
+    parser_k8s_pr.add_argument('cluster', nargs='?', help='Source branch (e.g., cluster name)')
+    parser_k8s_pr.add_argument('namespace', nargs='?', help='Kubernetes namespace')
+    parser_k8s_pr.add_argument('deploy', nargs='?', help='Deployment name')
+    parser_k8s_pr.add_argument('image', nargs='?', help='New image tag')
     parser_k8s_pr.add_argument('--approve-merge', action='store_true', help='Auto-merge the PR')
     parser_k8s_pr.add_argument('--repo', default='gitops-k8s', help='Repository name (default: gitops-k8s)')
     parser_k8s_pr.add_argument('--json', action='store_true', help='Output as JSON')
