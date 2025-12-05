@@ -14,6 +14,7 @@ from .bitbucket import (
     create_pull_request,
     merge_pull_request,
     run_k8s_pr_workflow,
+    list_pull_requests,
     GitOpsError
 )
 from .config import (
@@ -157,6 +158,56 @@ def cmd_merge(args):
             print(f"\n✅ {result['message']}")
             if result.get('merge_commit'):
                 print(f"   Merge commit: {result['merge_commit']}")
+        
+        sys.exit(0 if result['success'] else 1)
+        
+    except GitOpsError as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_pr_list(args):
+    """Handle pr command (list pull requests)."""
+    try:
+        result = list_pull_requests(
+            repo=args.repo,
+            status=args.status
+        )
+        
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"\n📋 Pull Requests in {args.repo} (status: {args.status})")
+            print()
+            
+            prs = result.get('pull_requests', [])
+            if not prs:
+                print("   No pull requests found.")
+            else:
+                # Print table header
+                print(f"  {'#ID':<6} | {'Source Branch':<40} | {'Destination':<40} | {'Author':<40} | {'Created':<40}")
+                print(f"  {'-'*6}-+-{'-'*40}-+-{'-'*40}-+-{'-'*40}-+-{'-'*40}")
+                
+                for pr in prs:
+                    pr_id = f"#{pr['id']}"
+                    source = pr['source']
+                    dest = pr['destination']
+                    author = pr['author']
+                    created = pr['created_on']
+                    
+                    print(f"  {pr_id:<6} | {source:<40} | {dest:<40} | {author:<40} | {created:<40}")
+                
+                print()
+                print(f"Total: {result['count']} pull request(s)")
         
         sys.exit(0 if result['success'] else 1)
         
@@ -456,6 +507,21 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-gitops
                              help='Delete source branch after merge')
     parser_merge.add_argument('--json', action='store_true', help='Output as JSON')
     parser_merge.set_defaults(func=cmd_merge)
+    
+    # pr command (list pull requests)
+    parser_pr_list = subparsers.add_parser(
+        'pr',
+        help='List pull requests in a repository'
+    )
+    parser_pr_list.add_argument('repo', help='Repository name')
+    parser_pr_list.add_argument(
+        '--status', '-s',
+        default='open',
+        choices=['open', 'merged', 'declined', 'draft'],
+        help='Filter by status (default: open)'
+    )
+    parser_pr_list.add_argument('--json', action='store_true', help='Output as JSON')
+    parser_pr_list.set_defaults(func=cmd_pr_list)
     
     # k8s-pr command
     parser_k8s_pr = subparsers.add_parser(

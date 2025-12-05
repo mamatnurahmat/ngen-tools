@@ -1,4 +1,5 @@
 """Configuration management for ngen-gitops."""
+import netrc
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -102,8 +103,44 @@ def config_exists() -> bool:
     return ENV_FILE.exists()
 
 
+def get_netrc_credentials(machine: str = "bitbucket.org") -> Optional[Dict[str, str]]:
+    """Get credentials from ~/.netrc file.
+    
+    Args:
+        machine: Machine name to look up (default: bitbucket.org)
+    
+    Returns:
+        dict: Dictionary with username and password, or None if not found
+    """
+    netrc_path = Path.home() / ".netrc"
+    
+    if not netrc_path.exists():
+        return None
+    
+    try:
+        nrc = netrc.netrc(str(netrc_path))
+        auth = nrc.authenticators(machine)
+        
+        if auth:
+            username, _, password = auth
+            return {
+                'username': username,
+                'password': password
+            }
+    except (netrc.NetrcParseError, OSError) as e:
+        # Silently ignore netrc errors
+        pass
+    
+    return None
+
+
 def get_bitbucket_credentials() -> Dict[str, str]:
     """Get Bitbucket credentials from config.
+    
+    Priority:
+    1. Environment variables (BITBUCKET_USER, BITBUCKET_APP_PASSWORD)
+    2. .env file (~/.ngen-gitops/.env)
+    3. ~/.netrc file (machine bitbucket.org)
     
     Returns:
         dict: Dictionary with username, app_password, and organization
@@ -118,10 +155,18 @@ def get_bitbucket_credentials() -> Dict[str, str]:
     app_password = bitbucket.get('app_password', '')
     organization = bitbucket.get('organization', 'loyaltoid')
     
+    # Fallback to netrc if credentials not in config
+    if not username or not app_password:
+        netrc_creds = get_netrc_credentials('bitbucket.org')
+        if netrc_creds:
+            username = username or netrc_creds['username']
+            app_password = app_password or netrc_creds['password']
+    
     if not username or not app_password:
         raise ValueError(
             "Bitbucket credentials not configured. "
-            f"Please update {ENV_FILE} or set BITBUCKET_USER and BITBUCKET_APP_PASSWORD environment variables."
+            f"Please update {ENV_FILE}, set BITBUCKET_USER/BITBUCKET_APP_PASSWORD environment variables, "
+            "or configure ~/.netrc with 'machine bitbucket.org'."
         )
     
     return {

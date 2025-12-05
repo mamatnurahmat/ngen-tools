@@ -31,6 +31,103 @@ class GitOpsError(Exception):
     pass
 
 
+def list_pull_requests(
+    repo: str,
+    status: str = "open",
+    username: Optional[str] = None,
+    app_password: Optional[str] = None,
+    org: Optional[str] = None
+) -> Dict[str, Any]:
+    """List pull requests in a Bitbucket repository.
+    
+    Args:
+        repo: Repository name
+        status: PR status filter (open, merged, declined, draft)
+        username: Bitbucket username (optional)
+        app_password: Bitbucket app password (optional)
+        org: Bitbucket organization (optional)
+    
+    Returns:
+        dict: Result with list of PRs
+    
+    Raises:
+        GitOpsError: If API request fails
+    """
+    # Get credentials
+    if not username or not app_password or not org:
+        creds = get_bitbucket_credentials()
+        username = username or creds['username']
+        app_password = app_password or creds['app_password']
+        org = org or creds['organization']
+    
+    # Map status to Bitbucket API state
+    status_map = {
+        'open': 'OPEN',
+        'merged': 'MERGED',
+        'declined': 'DECLINED',
+        'draft': 'OPEN'  # Draft PRs are OPEN with draft flag
+    }
+    
+    api_state = status_map.get(status.lower(), 'OPEN')
+    
+    result = {
+        'success': False,
+        'repository': repo,
+        'status': status,
+        'count': 0,
+        'pull_requests': [],
+        'message': ''
+    }
+    
+    try:
+        # Fetch pull requests from API
+        pr_url = f"{BITBUCKET_API_BASE}/{org}/{repo}/pullrequests?state={api_state}"
+        
+        resp = requests.get(pr_url, auth=(username, app_password), timeout=30)
+        
+        if resp.status_code == 404:
+            raise GitOpsError(f"Repository '{repo}' not found")
+        
+        resp.raise_for_status()
+        data = resp.json()
+        
+        prs = []
+        for pr in data.get('values', []):
+            pr_data = {
+                'id': pr.get('id'),
+                'title': pr.get('title', ''),
+                'source': pr.get('source', {}).get('branch', {}).get('name', ''),
+                'destination': pr.get('destination', {}).get('branch', {}).get('name', ''),
+                'author': pr.get('author', {}).get('display_name', 'unknown'),
+                'state': pr.get('state', ''),
+                'created_on': pr.get('created_on', '')[:10] if pr.get('created_on') else '',
+                'url': pr.get('links', {}).get('html', {}).get('href', '')
+            }
+            
+            # Filter draft if requested
+            if status.lower() == 'draft':
+                # Bitbucket doesn't have native draft support in Cloud
+                # For now, include all OPEN PRs when draft is requested
+                pass
+            
+            prs.append(pr_data)
+        
+        result['success'] = True
+        result['count'] = len(prs)
+        result['pull_requests'] = prs
+        result['message'] = f"Found {len(prs)} pull request(s)"
+        
+        return result
+        
+    except requests.exceptions.RequestException as e:
+        error_msg = f"API request failed: {str(e)}"
+        result['message'] = error_msg
+        raise GitOpsError(error_msg) from e
+    except Exception as e:
+        result['message'] = str(e)
+        raise
+
+
 def create_branch(
     repo: str,
     src_branch: str,
