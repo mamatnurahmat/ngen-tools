@@ -365,6 +365,8 @@ GitOps Commands:
   set-image-yaml    Update image in YAML file
   pull-request      Create a pull request
   merge             Merge a pull request
+  tag               Create a tag on a commit
+  webhook           Manage webhooks
   k8s-pr            Run K8s PR workflow
   server            Start REST API server
   config            Show configuration
@@ -376,6 +378,8 @@ Git Commands:
   fetch             Fetch from remote
   commit            Commit changes
   status            Show git status
+  logs              View commit logs
+  get-file          Get file content
 ```
 
 **Command Handlers:**
@@ -552,18 +556,24 @@ CLI/API Request
 
 ## ✅ Implementation Checklist
 
-- [ ] Create project structure
-- [ ] Implement `config.py`
-- [ ] Implement `git_wrapper.py`
-- [ ] Implement `bitbucket.py`
-- [ ] Implement `teams_notify.py`
-- [ ] Implement `server.py`
-- [ ] Implement `cli.py`
-- [ ] Configure `pyproject.toml`
-- [ ] Create `__init__.py`
-- [ ] Write `README.md`
-- [ ] Test all commands
+- [x] Create project structure
+- [x] Implement `config.py`
+- [x] Implement `git_wrapper.py`
+- [x] Implement `bitbucket.py`
+- [x] Implement `teams_notify.py`
+- [x] Implement `server.py`
+- [x] Implement `cli.py`
+- [x] Configure `pyproject.toml`
+- [x] Create `__init__.py`
+- [x] Write `README.md`
+- [x] Test all commands
 - [ ] Build & publish to PyPI
+
+### New Features (Added)
+- [x] `gitops logs` - View commit logs
+- [x] `gitops get-file` - Retrieve file content
+- [x] `gitops tag` - Create tags on commits
+- [x] `gitops webhook` - Manage webhooks
 
 ---
 

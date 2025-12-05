@@ -442,6 +442,99 @@ index abc1234..def5678 100644
 ...
 ```
 
+```
+
+#### View Commit Logs
+
+View commit history for a repository:
+
+```bash
+# Show last 10 commits (oneline)
+gitops logs myrepo main
+
+# Show last 20 commits
+gitops logs myrepo develop -n 20
+
+# Show only the last commit
+gitops logs myrepo main --last
+
+# Show detailed info for a specific commit
+gitops logs myrepo main --detail abc1234
+
+# JSON output
+gitops logs myrepo main --json
+```
+
+#### Get File Content
+
+Retrieve file content from a repository:
+
+```bash
+# Print file content to stdout
+gitops get-file myrepo main README.md
+
+# Save file to disk
+gitops get-file myrepo develop config.yaml -o local_config.yaml
+
+# Get binary file (base64 encoded in JSON)
+gitops get-file myrepo main logo.png --json
+```
+
+#### Create Tag
+
+Create a tag on a specific commit:
+
+```bash
+gitops tag <repo> <branch> <commit_id> <tag_name>
+```
+
+**Example:**
+```bash
+gitops tag my-app main abc1234 v1.0.0
+```
+
+**Output:**
+```
+🔍 Creating tag 'v1.0.0' on commit 'abc1234' in repository 'my-app'...
+✅ Branch 'main' validated
+✅ Commit 'abc1234' validated
+✅ Tag 'v1.0.0' created successfully on commit abc1234
+
+✅ Tag 'v1.0.0' created on commit abc1234
+   Tag URL: https://bitbucket.org/org/my-app/src/v1.0.0
+   Commit: abc1234
+```
+
+#### Manage Webhooks
+
+Manage webhooks in a repository:
+
+```bash
+# Create webhook
+gitops webhook <repo> <webhook_url>
+
+# Delete webhook
+gitops webhook <repo> <webhook_url> --delete
+```
+
+**Example:**
+```bash
+gitops webhook my-app https://webhook.example.com/trigger
+```
+
+**Output:**
+```
+🔍 Creating webhook in repository 'my-app'...
+   URL: https://webhook.example.com/trigger
+✅ Webhook created successfully
+   UUID: {uuid-string}
+   Events: repo:push, pullrequest:created, pullrequest:updated, pullrequest:fulfilled
+
+✅ Webhook created successfully
+   UUID: {uuid-string}
+   Events: repo:push, pullrequest:created, pullrequest:updated, pullrequest:fulfilled
+```
+
 #### Kubernetes PR Workflow (Interactive Mode)
 
 Run a complete GitOps workflow: Create Branch -> Update Image -> Create PR -> Merge (optional).

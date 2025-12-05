@@ -16,6 +16,8 @@ from .bitbucket import (
     run_k8s_pr_workflow,
     list_pull_requests,
     get_pull_request_diff,
+    create_tag,
+    manage_webhook,
     GitOpsError
 )
 from .config import (
@@ -34,6 +36,8 @@ from .git_wrapper import (
     git_fetch,
     git_commit,
     git_status,
+    git_log,
+    git_get_file,
     GitError
 )
 
@@ -243,6 +247,82 @@ def cmd_pr_list(args):
         sys.exit(1)
 
 
+def cmd_tag(args):
+    """Handle tag command."""
+    try:
+        user = get_current_user()
+        result = create_tag(
+            repo=args.repo,
+            branch=args.branch,
+            commit_id=args.commit_id,
+            tag_name=args.tag_name,
+            user=user
+        )
+        
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"\n✅ {result['message']}")
+            if result.get('tag_url'):
+                print(f"   Tag URL: {result['tag_url']}")
+            if result.get('commit_hash'):
+                print(f"   Commit: {result['commit_hash'][:7]}")
+        
+        sys.exit(0 if result['success'] else 1)
+        
+    except GitOpsError as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_webhook(args):
+    """Handle webhook command."""
+    try:
+        user = get_current_user()
+        result = manage_webhook(
+            repo=args.repo,
+            webhook_url=args.webhook_url,
+            delete=args.delete,
+            user=user
+        )
+        
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            if args.delete:
+                print(f"\n✅ {result['message']}")
+            else:
+                print(f"\n✅ {result['message']}")
+                if result.get('webhook_uuid'):
+                    print(f"   UUID: {result['webhook_uuid']}")
+                if result.get('events'):
+                    print(f"   Events: {', '.join(result['events'])}")
+        
+        sys.exit(0 if result['success'] else 1)
+        
+    except GitOpsError as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_k8s_pr(args):
     """Handle k8s-pr command with interactive prompts for missing arguments."""
     try:
@@ -417,6 +497,133 @@ def cmd_status(args):
         sys.exit(1)
 
 
+def cmd_logs(args):
+    """Handle logs command."""
+    try:
+        # Get credentials if available (for private repos)
+        username = None
+        app_password = None
+        try:
+            creds = get_bitbucket_credentials()
+            username = creds['username']
+            app_password = creds['app_password']
+        except ValueError:
+            # Credentials not configured, continue without auth
+            pass
+        
+        # If --last is specified, set max_count to 1
+        max_count = 1 if args.last else args.max_count
+        
+        result = git_log(
+            repo=args.repo,
+            ref=args.ref,
+            max_count=max_count,
+            commit_id=args.detail,
+            org=args.org,
+            remote=args.remote,
+            username=username,
+            app_password=app_password,
+            json_format=args.json
+        )
+        
+        if args.json:
+            # Output as JSON
+            print(json.dumps(result, indent=2))
+        else:
+            # Output as text
+            if args.detail:
+                print(f"\n📝 Commit Details: {args.detail}")
+                print("=" * 80)
+            elif args.last:
+                print(f"\n📋 Last Commit for {args.repo} ({args.ref})")
+                print("=" * 80)
+            else:
+                print(f"\n📋 Commit Logs for {args.repo} ({args.ref})")
+                print("=" * 80)
+            
+            print(result.get('output', ''))
+        
+        sys.exit(0 if result.get('success', False) else 1)
+        
+    except GitError as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+
+def cmd_get_file(args):
+    """Handle get-file command."""
+    try:
+        # Get credentials if available (for private repos)
+        username = None
+        app_password = None
+        try:
+            creds = get_bitbucket_credentials()
+            username = creds['username']
+            app_password = creds['app_password']
+        except ValueError:
+            # Credentials not configured, continue without auth
+            pass
+        
+        result = git_get_file(
+            repo=args.repo,
+            ref=args.ref,
+            file_path=args.file_path,
+            org=args.org,
+            remote=args.remote,
+            username=username,
+            app_password=app_password
+        )
+        
+        if args.json:
+            # Output as JSON
+            print(json.dumps(result, indent=2))
+        else:
+            # Output file content
+            if result.get('binary'):
+                if args.output:
+                    # Save to file
+                    import base64
+                    with open(args.output, 'wb') as f:
+                        f.write(base64.b64decode(result['content']))
+                    print(f"✅ Saved to: {args.output}", file=sys.stderr)
+                else:
+                    print(result['content'])
+            else:
+                if args.output:
+                    # Save to file
+                    with open(args.output, 'w', encoding='utf-8') as f:
+                        f.write(result['content'])
+                    print(f"✅ File saved to: {args.output}", file=sys.stderr)
+                else:
+                    # Print only file content
+                    print(result['content'])
+        
+        sys.exit(0 if result.get('success', False) else 1)
+        
+    except GitError as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        if args.json:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_config(args):
     """Handle config command."""
     try:
@@ -481,11 +688,21 @@ Examples:
   gitops set-image-yaml myrepo develop k8s/deployment.yaml myapp:v1.0.0
   gitops pull-request myrepo feature/new-feature develop --delete-after-merge
   gitops merge https://bitbucket.org/org/repo/pull-requests/123
+  gitops tag myrepo main abc123 v1.0.0           # Create tag on commit
+  gitops webhook myrepo https://dev-webhook-cicd.qoin.id/generic-webhook-trigger/invoke?token=saas-apigateway
+  gitops webhook myrepo https://dev-webhook-cicd.qoin.id/generic-webhook-trigger/invoke?token=saas-apigateway --delete
   
   # Git Commands (multi-remote support)
   gitops clone myrepo main                    # Clone from Bitbucket (default)
   gitops clone myrepo main --remote github.com  # Clone from GitHub
   gitops clone org/repo develop --full         # Clone all branches
+  gitops logs myrepo main                      # Show last 10 commits (oneline)
+  gitops logs myrepo develop -n 20             # Show last 20 commits
+  gitops logs myrepo main --last               # Show only the last commit
+  gitops logs myrepo main --last --json        # Get last commit in JSON format
+  gitops logs myrepo main --detail abc123      # Show detailed info for commit
+  gitops get-file myrepo main README.md        # Get file content from repo
+  gitops get-file myrepo dev config.yaml -o local.yaml  # Save to file
   gitops status
   gitops pull develop
   gitops commit -m "Update files" --all
@@ -552,6 +769,29 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-gitops
                              help='Delete source branch after merge')
     parser_merge.add_argument('--json', action='store_true', help='Output as JSON')
     parser_merge.set_defaults(func=cmd_merge)
+    
+    # tag command
+    parser_tag = subparsers.add_parser(
+        'tag',
+        help='Create a tag on a specific commit'
+    )
+    parser_tag.add_argument('repo', help='Repository name')
+    parser_tag.add_argument('branch', help='Branch name')
+    parser_tag.add_argument('commit_id', help='Commit ID/hash to tag')
+    parser_tag.add_argument('tag_name', help='Tag name/version (e.g., v1.0.0)')
+    parser_tag.add_argument('--json', action='store_true', help='Output as JSON')
+    parser_tag.set_defaults(func=cmd_tag)
+    
+    # webhook command
+    parser_webhook = subparsers.add_parser(
+        'webhook',
+        help='Manage webhooks in repository'
+    )
+    parser_webhook.add_argument('repo', help='Repository name')
+    parser_webhook.add_argument('webhook_url', help='Webhook URL')
+    parser_webhook.add_argument('--delete', action='store_true', help='Delete the webhook instead of creating')
+    parser_webhook.add_argument('--json', action='store_true', help='Output as JSON')
+    parser_webhook.set_defaults(func=cmd_webhook)
     
     # pr command (list pull requests)
     parser_pr_list = subparsers.add_parser(
@@ -658,6 +898,35 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-gitops
     )
     parser_status.add_argument('--cwd', help='Working directory (defaults to current)')
     parser_status.set_defaults(func=cmd_status)
+    
+    # logs command
+    parser_logs = subparsers.add_parser(
+        'logs',
+        help='Show commit logs from repository'
+    )
+    parser_logs.add_argument('repo', help='Repository name (e.g., myrepo or org/myrepo)')
+    parser_logs.add_argument('ref', nargs='?', default='HEAD', help='Branch or tag reference (default: HEAD)')
+    parser_logs.add_argument('--max-count', '-n', type=int, default=10, help='Maximum number of commits to show (default: 10)')
+    parser_logs.add_argument('--detail', metavar='COMMIT_ID', help='Show detailed info for specific commit ID')
+    parser_logs.add_argument('--last', action='store_true', help='Show only the last commit')
+    parser_logs.add_argument('--json', action='store_true', help='Output as JSON')
+    parser_logs.add_argument('--org', help='Organization name (defaults to config)')
+    parser_logs.add_argument('--remote', help='Remote type: bitbucket.org, github.com, gitlab.com (defaults to config)')
+    parser_logs.set_defaults(func=cmd_logs)
+    
+    # get-file command
+    parser_get_file = subparsers.add_parser(
+        'get-file',
+        help='Get file content from repository'
+    )
+    parser_get_file.add_argument('repo', help='Repository name (e.g., myrepo or org/myrepo)')
+    parser_get_file.add_argument('ref', help='Branch or tag reference')
+    parser_get_file.add_argument('file_path', help='Path to file in repository')
+    parser_get_file.add_argument('--output', '-o', help='Save to file instead of printing to stdout')
+    parser_get_file.add_argument('--json', action='store_true', help='Output as JSON')
+    parser_get_file.add_argument('--org', help='Organization name (defaults to config)')
+    parser_get_file.add_argument('--remote', help='Remote type: bitbucket.org, github.com, gitlab.com (defaults to config)')
+    parser_get_file.set_defaults(func=cmd_get_file)
     
     # Parse arguments
     args = parser.parse_args()

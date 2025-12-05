@@ -338,3 +338,212 @@ def git_checkout(branch: str, create: bool = False, cwd: Optional[str] = None) -
     print(f"🔄 Checking out branch {branch}...")
     _run_git_command(checkout_args, cwd=cwd)
     print(f"✅ Successfully checked out {branch}")
+
+
+def git_log(repo: str, ref: str = 'HEAD', max_count: int = 10, 
+            commit_id: Optional[str] = None, org: Optional[str] = None, 
+            remote: Optional[str] = None, username: Optional[str] = None, 
+            app_password: Optional[str] = None, json_format: bool = False) -> dict:
+    """Show git commit logs.
+    
+    Args:
+        repo: Repository name (e.g., 'myrepo' or 'org/myrepo')
+        ref: Branch/tag reference (default: HEAD)
+        max_count: Maximum number of commits to show (default: 10)
+        commit_id: Specific commit ID to show details (optional)
+        org: Organization name (defaults to config)
+        remote: Remote type (defaults to config)
+        username: Username for authentication (optional)
+        app_password: App password/token for authentication (optional)
+        json_format: Return structured data for JSON output (optional)
+        
+    Returns:
+        dict: Git log data with 'output' (raw text) and 'commits' (structured data)
+        
+    Raises:
+        GitError: If log command fails
+    """
+    # Parse repo if it contains org
+    if '/' in repo:
+        parts = repo.split('/', 1)
+        org = org or parts[0]
+        repo = parts[1]
+    
+    # Use defaults from config
+    org = org or get_default_org()
+    remote = remote or get_default_remote()
+    
+    # Create temporary directory for cloning
+    import tempfile
+    temp_dir = tempfile.mkdtemp()
+    
+    try:
+        # Build git URL
+        git_url = _build_git_url(org, repo, remote, username, app_password)
+        
+        # Clone repository (single branch for efficiency)
+        clone_args = ['clone', '--single-branch', '-b', ref, '--depth', str(max_count + 10), git_url, temp_dir]
+        
+        try:
+            _run_git_command(clone_args, capture_output=True)
+        except GitError:
+            # If branch doesn't exist, try with default branch
+            import shutil
+            shutil.rmtree(temp_dir)
+            temp_dir = tempfile.mkdtemp()
+            clone_args = ['clone', '--single-branch', '--depth', str(max_count + 10), git_url, temp_dir]
+            _run_git_command(clone_args, capture_output=True)
+        
+        # Build log command
+        if commit_id:
+            # Show detailed info for specific commit
+            log_args = ['show', commit_id, '--stat']
+            result = _run_git_command(log_args, cwd=temp_dir, capture_output=True)
+            
+            # For JSON format, also get structured data
+            if json_format:
+                json_args = ['show', commit_id, '--format=%H%n%an%n%ae%n%at%n%s%n%b', '--stat']
+                json_result = _run_git_command(json_args, cwd=temp_dir, capture_output=True)
+                lines = json_result.stdout.strip().split('\n')
+                
+                return {
+                    'success': True,
+                    'output': result.stdout,
+                    'commit': {
+                        'hash': lines[0] if len(lines) > 0 else '',
+                        'author': lines[1] if len(lines) > 1 else '',
+                        'email': lines[2] if len(lines) > 2 else '',
+                        'timestamp': lines[3] if len(lines) > 3 else '',
+                        'subject': lines[4] if len(lines) > 4 else '',
+                        'body': '\n'.join(lines[5:]) if len(lines) > 5 else ''
+                    }
+                }
+            
+            return {'success': True, 'output': result.stdout}
+        else:
+            # Show oneline log
+            log_args = ['log', f'-{max_count}', '--oneline', '--decorate']
+            result = _run_git_command(log_args, cwd=temp_dir, capture_output=True)
+            
+            # For JSON format, get structured data
+            if json_format:
+                json_args = ['log', f'-{max_count}', '--format=%H|%an|%ae|%at|%s']
+                json_result = _run_git_command(json_args, cwd=temp_dir, capture_output=True)
+                
+                commits = []
+                for line in json_result.stdout.strip().split('\n'):
+                    if line:
+                        parts = line.split('|')
+                        if len(parts) >= 5:
+                            commits.append({
+                                'hash': parts[0],
+                                'author': parts[1],
+                                'email': parts[2],
+                                'timestamp': parts[3],
+                                'subject': '|'.join(parts[4:])  # In case subject contains |
+                            })
+                
+                return {
+                    'success': True,
+                    'output': result.stdout,
+                    'count': len(commits),
+                    'commits': commits
+                }
+            
+            return {'success': True, 'output': result.stdout}
+        
+    finally:
+        # Cleanup temporary directory
+        import shutil
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+
+
+def git_get_file(repo: str, ref: str, file_path: str, 
+                 org: Optional[str] = None, remote: Optional[str] = None,
+                 username: Optional[str] = None, app_password: Optional[str] = None) -> dict:
+    """Get file content from a git repository.
+    
+    Args:
+        repo: Repository name (e.g., 'myrepo' or 'org/myrepo')
+        ref: Branch/tag reference
+        file_path: Path to file in repository
+        org: Organization name (defaults to config)
+        remote: Remote type (defaults to config)
+        username: Username for authentication (optional)
+        app_password: App password/token for authentication (optional)
+        
+    Returns:
+        dict: File data with 'success', 'content', 'path', 'ref'
+        
+    Raises:
+        GitError: If file retrieval fails
+    """
+    # Parse repo if it contains org
+    if '/' in repo:
+        parts = repo.split('/', 1)
+        org = org or parts[0]
+        repo = parts[1]
+    
+    # Use defaults from config
+    org = org or get_default_org()
+    remote = remote or get_default_remote()
+    
+    # Create temporary directory for cloning
+    import tempfile
+    temp_dir = tempfile.mkdtemp()
+    
+    try:
+        # Build git URL
+        git_url = _build_git_url(org, repo, remote, username, app_password)
+        
+        # Clone repository (single branch, depth 1 for efficiency)
+        clone_args = ['clone', '--single-branch', '-b', ref, '--depth', '1', git_url, temp_dir]
+        
+        try:
+            _run_git_command(clone_args, capture_output=True)
+        except GitError as e:
+            raise GitError(f"Failed to clone repository: {str(e)}")
+        
+        # Check if file exists
+        full_path = os.path.join(temp_dir, file_path)
+        if not os.path.exists(full_path):
+            raise GitError(f"File not found: {file_path}")
+        
+        if not os.path.isfile(full_path):
+            raise GitError(f"Path is not a file: {file_path}")
+        
+        # Read file content
+        try:
+            with open(full_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            # Try reading as binary if UTF-8 fails
+            with open(full_path, 'rb') as f:
+                content = f.read()
+                # Encode as base64 for binary files
+                import base64
+                content = base64.b64encode(content).decode('ascii')
+                return {
+                    'success': True,
+                    'content': content,
+                    'path': file_path,
+                    'ref': ref,
+                    'encoding': 'base64',
+                    'binary': True
+                }
+        
+        return {
+            'success': True,
+            'content': content,
+            'path': file_path,
+            'ref': ref,
+            'encoding': 'utf-8',
+            'binary': False
+        }
+        
+    finally:
+        # Cleanup temporary directory
+        import shutil
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)

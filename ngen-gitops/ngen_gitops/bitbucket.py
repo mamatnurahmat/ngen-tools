@@ -891,3 +891,288 @@ def run_k8s_pr_workflow(
         workflow_result["message"] = str(e)
         workflow_result["success"] = False
         return workflow_result
+
+
+def create_tag(
+    repo: str,
+    branch: str,
+    commit_id: str,
+    tag_name: str,
+    username: Optional[str] = None,
+    app_password: Optional[str] = None,
+    org: Optional[str] = None,
+    user: Optional[str] = None
+) -> Dict[str, Any]:
+    """Create a tag on a specific commit in Bitbucket repository.
+    
+    Args:
+        repo: Repository name
+        branch: Branch name (for validation)
+        commit_id: Commit hash to tag
+        tag_name: Tag name/version
+        username: Bitbucket username (optional)
+        app_password: Bitbucket app password (optional)
+        org: Bitbucket organization (optional)
+        user: User creating the tag (optional)
+    
+    Returns:
+        dict: Result with success status and tag details
+    
+    Raises:
+        GitOpsError: If tag creation fails
+    """
+    # Get credentials
+    if not username or not app_password or not org:
+        creds = get_bitbucket_credentials()
+        username = username or creds['username']
+        app_password = app_password or creds['app_password']
+        org = org or creds['organization']
+    
+    result = {
+        'success': False,
+        'repository': repo,
+        'branch': branch,
+        'commit_id': commit_id,
+        'tag_name': tag_name,
+        'message': ''
+    }
+    
+    try:
+        print(f"🔍 Creating tag '{tag_name}' on commit '{commit_id[:7]}' in repository '{repo}'...")
+        
+        # Step 1: Validate branch exists
+        branch_url = f"{BITBUCKET_API_BASE}/{org}/{repo}/refs/branches/{branch}"
+        
+        resp = requests.get(branch_url, auth=(username, app_password), timeout=30)
+        
+        if resp.status_code == 404:
+            raise GitOpsError(f"Branch '{branch}' not found in repository '{repo}'")
+        
+        resp.raise_for_status()
+        print(f"✅ Branch '{branch}' validated")
+        
+        # Step 2: Validate commit exists
+        commit_url = f"{BITBUCKET_API_BASE}/{org}/{repo}/commit/{commit_id}"
+        
+        resp = requests.get(commit_url, auth=(username, app_password), timeout=30)
+        
+        if resp.status_code == 404:
+            raise GitOpsError(f"Commit '{commit_id}' not found in repository '{repo}'")
+        
+        resp.raise_for_status()
+        commit_data = resp.json()
+        commit_hash = commit_data.get('hash', commit_id)
+        print(f"✅ Commit '{commit_hash[:7]}' validated")
+        
+        # Step 3: Check if tag already exists
+        tag_check_url = f"{BITBUCKET_API_BASE}/{org}/{repo}/refs/tags/{tag_name}"
+        
+        check_resp = requests.get(tag_check_url, auth=(username, app_password), timeout=30)
+        
+        if check_resp.status_code == 200:
+            existing_tag = check_resp.json()
+            existing_hash = existing_tag.get('target', {}).get('hash', '')
+            if existing_hash == commit_hash:
+                print(f"ℹ️  Tag '{tag_name}' already exists on this commit")
+                result['success'] = True
+                result['message'] = f"Tag '{tag_name}' already exists on commit {commit_hash[:7]}"
+                result['tag_url'] = f"https://bitbucket.org/{org}/{repo}/src/{tag_name}"
+                return result
+            else:
+                raise GitOpsError(f"Tag '{tag_name}' already exists on a different commit ({existing_hash[:7]})")
+        
+        # Step 4: Create tag
+        create_tag_url = f"{BITBUCKET_API_BASE}/{org}/{repo}/refs/tags"
+        
+        payload = {
+            "name": tag_name,
+            "target": {
+                "hash": commit_hash
+            }
+        }
+        
+        create_resp = requests.post(
+            create_tag_url,
+            auth=(username, app_password),
+            json=payload,
+            timeout=30
+        )
+        
+        if create_resp.status_code == 409:
+            raise GitOpsError(f"Tag '{tag_name}' already exists")
+        
+        create_resp.raise_for_status()
+        
+        print(f"✅ Tag '{tag_name}' created successfully on commit {commit_hash[:7]}")
+        result['success'] = True
+        result['message'] = f"Tag '{tag_name}' created on commit {commit_hash[:7]}"
+        result['tag_url'] = f"https://bitbucket.org/{org}/{repo}/src/{tag_name}"
+        result['commit_hash'] = commit_hash
+        
+        return result
+        
+    except requests.exceptions.RequestException as e:
+        error_msg = f"API request failed: {str(e)}"
+        result['message'] = error_msg
+        raise GitOpsError(error_msg) from e
+    except Exception as e:
+        result['message'] = str(e)
+        raise GitOpsError(str(e)) from e
+
+
+def manage_webhook(
+    repo: str,
+    webhook_url: str,
+    delete: bool = False,
+    username: Optional[str] = None,
+    app_password: Optional[str] = None,
+    org: Optional[str] = None,
+    user: Optional[str] = None
+) -> Dict[str, Any]:
+    """Manage webhooks in Bitbucket repository.
+    
+    Args:
+        repo: Repository name
+        webhook_url: Webhook URL to add or delete
+        delete: If True, delete the webhook instead of creating
+        username: Bitbucket username (optional)
+        app_password: Bitbucket app password (optional)
+        org: Bitbucket organization (optional)
+        user: User managing the webhook (optional)
+    
+    Returns:
+        dict: Result with success status and webhook details
+    
+    Raises:
+        GitOpsError: If webhook operation fails
+    """
+    # Get credentials
+    if not username or not app_password or not org:
+        creds = get_bitbucket_credentials()
+        username = username or creds['username']
+        app_password = app_password or creds['app_password']
+        org = org or creds['organization']
+    
+    result = {
+        'success': False,
+        'repository': repo,
+        'webhook_url': webhook_url,
+        'action': 'delete' if delete else 'create',
+        'message': ''
+    }
+    
+    try:
+        webhooks_url = f"{BITBUCKET_API_BASE}/{org}/{repo}/hooks"
+        
+        if delete:
+            # Delete webhook
+            print(f"🔍 Searching for webhook '{webhook_url}' in repository '{repo}'...")
+            
+            # Get all webhooks
+            resp = requests.get(webhooks_url, auth=(username, app_password), timeout=30)
+            resp.raise_for_status()
+            
+            webhooks_data = resp.json()
+            webhooks = webhooks_data.get('values', [])
+            
+            # Find webhook by URL
+            webhook_to_delete = None
+            for webhook in webhooks:
+                if webhook.get('url') == webhook_url:
+                    webhook_to_delete = webhook
+                    break
+            
+            if not webhook_to_delete:
+                raise GitOpsError(f"Webhook with URL '{webhook_url}' not found in repository '{repo}'")
+            
+            webhook_uuid = webhook_to_delete.get('uuid')
+            if not webhook_uuid:
+                raise GitOpsError("Could not get webhook UUID")
+            
+            # Delete the webhook
+            delete_url = f"{webhooks_url}/{webhook_uuid}"
+            delete_resp = requests.delete(delete_url, auth=(username, app_password), timeout=30)
+            
+            if delete_resp.status_code == 404:
+                raise GitOpsError(f"Webhook not found")
+            
+            delete_resp.raise_for_status()
+            
+            print(f"✅ Webhook deleted successfully")
+            result['success'] = True
+            result['message'] = f"Webhook '{webhook_url}' deleted successfully"
+            result['webhook_uuid'] = webhook_uuid
+            
+        else:
+            # Create webhook
+            print(f"🔍 Creating webhook in repository '{repo}'...")
+            print(f"   URL: {webhook_url}")
+            
+            # Check if webhook already exists
+            resp = requests.get(webhooks_url, auth=(username, app_password), timeout=30)
+            resp.raise_for_status()
+            
+            webhooks_data = resp.json()
+            existing_webhooks = webhooks_data.get('values', [])
+            
+            for webhook in existing_webhooks:
+                if webhook.get('url') == webhook_url:
+                    print(f"ℹ️  Webhook already exists")
+                    result['success'] = True
+                    result['message'] = f"Webhook already exists"
+                    result['webhook_uuid'] = webhook.get('uuid')
+                    result['webhook_url'] = webhook.get('url')
+                    return result
+            
+            # Create new webhook
+            payload = {
+                "description": f"Webhook created by ngen-gitops",
+                "url": webhook_url,
+                "active": True,
+                "events": [
+                    "repo:push",
+                    "pullrequest:created",
+                    "pullrequest:updated",
+                    "pullrequest:fulfilled"
+                ]
+            }
+            
+            create_resp = requests.post(
+                webhooks_url,
+                auth=(username, app_password),
+                json=payload,
+                timeout=30
+            )
+            
+            if create_resp.status_code == 400:
+                error_data = create_resp.json()
+                error_msg = error_data.get('error', {}).get('message', 'Unknown error')
+                raise GitOpsError(f"Failed to create webhook: {error_msg}")
+            
+            create_resp.raise_for_status()
+            webhook_data = create_resp.json()
+            
+            webhook_uuid = webhook_data.get('uuid')
+            
+            print(f"✅ Webhook created successfully")
+            print(f"   UUID: {webhook_uuid}")
+            
+            result['success'] = True
+            result['message'] = f"Webhook created successfully"
+            result['webhook_uuid'] = webhook_uuid
+            result['webhook_url'] = webhook_data.get('url')
+            result['events'] = payload['events']
+        
+        return result
+        
+    except requests.exceptions.RequestException as e:
+        if e.response is not None and e.response.status_code == 403:
+            raise GitOpsError(
+                "Permission denied (403). Please check if your App Password has 'Webhooks' (Read & Write) permissions enabled."
+            ) from e
+        error_msg = f"API request failed: {str(e)}"
+        result['message'] = error_msg
+        raise GitOpsError(error_msg) from e
+    except Exception as e:
+        result['message'] = str(e)
+        raise GitOpsError(str(e)) from e
