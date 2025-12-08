@@ -33,6 +33,7 @@ def create_default_env():
 # Git Settings
 # GIT_DEFAULT_REMOTE=bitbucket.org
 # GIT_DEFAULT_ORG=loyaltoid
+# DEFAULT_IMAGE_REGISTRY=loyaltolpi
 
 # Notifications (Microsoft Teams)
 # TEAMS_WEBHOOK=https://your-org.webhook.office.com/webhookb2/...
@@ -75,7 +76,8 @@ def load_config() -> Dict[str, Any]:
         },
         "git": {
             "default_remote": os.getenv("GIT_DEFAULT_REMOTE", "bitbucket.org"),
-            "default_org": os.getenv("GIT_DEFAULT_ORG", "loyaltoid")
+            "default_org": os.getenv("GIT_DEFAULT_ORG", "loyaltoid"),
+            "default_image_registry": os.getenv("DEFAULT_IMAGE_REGISTRY", "loyaltolpi")
         },
         "notifications": {
             "teams_webhook": os.getenv("TEAMS_WEBHOOK", "")
@@ -258,3 +260,13 @@ def get_current_user() -> str:
         return getpass.getuser()
     except Exception:
         return "unknown"
+
+
+def get_default_image_registry() -> str:
+    """Get default image registry.
+    
+    Returns:
+        str: Default image registry (default: loyaltolpi)
+    """
+    config = load_config()
+    return config.get('git', {}).get('default_image_registry', 'loyaltolpi')

@@ -27,7 +27,8 @@ from .config import (
     get_bitbucket_credentials,
     get_default_remote,
     get_default_org,
-    get_current_user
+    get_current_user,
+    get_default_image_registry
 )
 from .git_wrapper import (
     git_clone,
@@ -340,7 +341,20 @@ def cmd_k8s_pr(args):
         cluster = prompt_if_missing(args.cluster, '🔧 Enter cluster (source branch): ')
         namespace = prompt_if_missing(args.namespace, '🔧 Enter Kubernetes namespace: ')
         deploy = prompt_if_missing(args.deploy, '🔧 Enter deployment name: ')
-        image = prompt_if_missing(args.image, '🔧 Enter new image tag: ')
+        
+        # Handle image input with default registry support
+        default_registry = get_default_image_registry()
+        if args.image:
+            image = args.image
+        else:
+            suggestion = f"{default_registry}/{deploy}:<tag>" if deploy else f"{default_registry}/<deploy>: <tag>"
+            image_input = prompt_if_missing(None, f'🔧 Enter new image tag (suggestion: {suggestion}): ')
+            
+            # If input appears to be just a tag (no slash), prepend default registry and deploy name
+            if image_input and '/' not in image_input:
+                image = f"{default_registry}/{deploy}:{image_input}"
+            else:
+                image = image_input
         
         # Handle approve_merge
         approve_merge = args.approve_merge
@@ -523,7 +537,8 @@ def cmd_logs(args):
             remote=args.remote,
             username=username,
             app_password=app_password,
-            json_format=args.json
+            json_format=args.json,
+            short_hash=args.version
         )
         
         if args.json:
@@ -531,17 +546,21 @@ def cmd_logs(args):
             print(json.dumps(result, indent=2))
         else:
             # Output as text
-            if args.detail:
+            if args.version:
+                # Just print the hash
+                print(result.get('output', ''))
+            elif args.detail:
                 print(f"\n📝 Commit Details: {args.detail}")
                 print("=" * 80)
+                print(result.get('output', ''))
             elif args.last:
                 print(f"\n📋 Last Commit for {args.repo} ({args.ref})")
                 print("=" * 80)
+                print(result.get('output', ''))
             else:
                 print(f"\n📋 Commit Logs for {args.repo} ({args.ref})")
                 print("=" * 80)
-            
-            print(result.get('output', ''))
+                print(result.get('output', ''))
         
         sys.exit(0 if result.get('success', False) else 1)
         
@@ -651,6 +670,7 @@ def cmd_config(args):
             print(f"Git:")
             print(f"   Default Remote: {config.get('git', {}).get('default_remote', 'bitbucket.org')}")
             print(f"   Default Org: {config.get('git', {}).get('default_org', 'loyaltoid')}")
+            print(f"   Default Image Registry: {config.get('git', {}).get('default_image_registry', 'loyaltolpi')}")
             print()
             print(f"Notifications:")
             teams_webhook = config.get('notifications', {}).get('teams_webhook', '')
@@ -909,6 +929,7 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-gitops
     parser_logs.add_argument('--max-count', '-n', type=int, default=10, help='Maximum number of commits to show (default: 10)')
     parser_logs.add_argument('--detail', metavar='COMMIT_ID', help='Show detailed info for specific commit ID')
     parser_logs.add_argument('--last', action='store_true', help='Show only the last commit')
+    parser_logs.add_argument('--version', action='store_true', help='Show only the short commit hash of the last commit')
     parser_logs.add_argument('--json', action='store_true', help='Output as JSON')
     parser_logs.add_argument('--org', help='Organization name (defaults to config)')
     parser_logs.add_argument('--remote', help='Remote type: bitbucket.org, github.com, gitlab.com (defaults to config)')
