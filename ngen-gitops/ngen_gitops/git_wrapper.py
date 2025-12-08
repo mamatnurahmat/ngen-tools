@@ -343,7 +343,8 @@ def git_checkout(branch: str, create: bool = False, cwd: Optional[str] = None) -
 def git_log(repo: str, ref: str = 'HEAD', max_count: int = 10, 
             commit_id: Optional[str] = None, org: Optional[str] = None, 
             remote: Optional[str] = None, username: Optional[str] = None, 
-            app_password: Optional[str] = None, json_format: bool = False) -> dict:
+            app_password: Optional[str] = None, json_format: bool = False,
+            short_hash: bool = False) -> dict:
     """Show git commit logs.
     
     Args:
@@ -450,6 +451,12 @@ def git_log(repo: str, ref: str = 'HEAD', max_count: int = 10,
                     'commits': commits
                 }
             
+            if short_hash:
+                # Return only short hash of the last commit
+                log_args = ['log', '-1', '--format=%h']
+                result = _run_git_command(log_args, cwd=temp_dir, capture_output=True)
+                return {'success': True, 'output': result.stdout.strip()}
+
             return {'success': True, 'output': result.stdout}
         
     finally:
