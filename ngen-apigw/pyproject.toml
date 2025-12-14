@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ngen-apigw"
-version = "0.1.3"
+version = "0.1.4"
 description = "GitOps-friendly API Gateway Configuration Tool"
 readme = "README.md"
 requires-python = ">=3.7"
