@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ngen-buildx"
+version = "0.1.1"
+description = "Docker Buildx CLI wrapper with GitOps integration"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+authors = [
+    {name = "ngen-buildx contributors"}
+]
+keywords = ["cli", "docker", "buildx", "devops", "ci-cd", "container"]
+dependencies = [
+    "python-dotenv>=0.19.0",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+[project.scripts]
+ngen-buildx = "ngen_buildx.cli:main"
+buildx = "ngen_buildx.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mamatnurahmat/ngen-buildx"
+Repository = "https://github.com/mamatnurahmat/ngen-buildx"
+Issues = "https://github.com/mamatnurahmat/ngen-buildx/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-dir]
+"" = "."
+ngen_buildx = "ngen_buildx"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ngen_buildx*"]
