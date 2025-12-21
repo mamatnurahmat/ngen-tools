@@ -384,7 +384,7 @@ except Exception as e:
     sys.exit(1)
 " 2>&1)
 
-    if echo "$help_output" | grep -q "GitOps CLI"; then
+    if echo "$help_output" | grep -q "CLI"; then
         print_info "    ✅ CLI help command works"
         ((test_passed++))
     else

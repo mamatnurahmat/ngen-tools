@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ngen-apigw"
+version = "0.1.4"
+description = "GitOps-friendly API Gateway Configuration Tool"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+authors = [
+    {name = "ngen-apigw contributors"}
+]
+keywords = ["cli", "apigateway", "gitops", "api"]
+dependencies = [
+    # No external dependencies identified yet, relying on stdlib
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+apigw = "ngen_apigw.cli:main"
+
+[project.urls]
+# Homepage = "https://github.com/mamatnurahmat/ngen-apigw"
