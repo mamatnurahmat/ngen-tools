@@ -1,0 +1,335 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# -------------------------------
+# DevOps CI/CD Build Tool
+# Version: 2.0.0
+# Description: Advanced Docker image builder with SBOM and provenance support
+# Author: DevOps Team
+# -------------------------------
+
+# Version information
+VERSION="2.0.0"
+BUILD_DATE="$(date +%Y-%m-%d)"
+
+# -------------------------------
+# Helper: Tampilkan versi
+# -------------------------------
+show_version() {
+  cat <<EOF
+🔧 DevOps CI/CD Build Tool v${VERSION}
+Build Date: ${BUILD_DATE}
+EOF
+}
+
+# -------------------------------
+# Helper: Tampilkan cara penggunaan
+# -------------------------------
+show_help() {
+  cat <<EOF
+🔧 DevOps CI/CD Build Tool
+==========================
+
+DESCRIPTION:
+  Build Docker images from Bitbucket repositories using buildx with advanced features
+  like SBOM generation, provenance attestation, and resource management.
+
+USAGE:
+  $(basename "$0") <REPO> <REFS> [--rebuild] [CUSTOM_IMAGE]
+
+ARGUMENTS:
+  REPO           Repository name (e.g., saas-be-core, saas-apigateway)
+  REFS           Branch or tag name (e.g., develop, main, v1.0.0)
+  --rebuild      (Optional) Force rebuild even if image already exists
+  CUSTOM_IMAGE   (Optional) Override image name/tag for build output
+
+ENVIRONMENT VARIABLES:
+  Resource Limits:
+    DEFAULT_MEMORY       Memory limit (default: 2g)
+    DEFAULT_CPUS         CPU count (default: 1)
+    DEFAULT_CPU_PERIOD   CPU period (default: 100000)
+    DEFAULT_CPU_QUOTA    CPU quota (default: 100000)
+
+  API Configuration:
+    DEFAULT_URL_API      API endpoint URL (default: http://193.1.1.3:5000)
+
+  Build Configuration:
+    REGISTRY01_URL       Docker registry URL
+    IMAGE                Project image name
+    PORT                 Primary port
+    PORT2                Secondary port
+
+  Authentication:
+    Uses .netrc file for Git credentials (mounted in container)
+    GITUSERTOKEN         Git user token
+    GITHUB_USER          GitHub username
+    GITHUB_TOKEN         GitHub access token
+
+EXAMPLES:
+  # Basic build
+  $0 saas-be-core develop
+
+  # Force rebuild existing image
+  $0 saas-be-core develop --rebuild
+
+  # Build with custom image name
+  $0 saas-be-core develop --rebuild loyaltolpi/saas-be-core:dev-123
+
+  # Build specific tag
+  $0 saas-apigateway v1.2.0
+
+  # Build with custom resource limits
+  DEFAULT_MEMORY=4g DEFAULT_CPUS=2 $0 saas-be-core develop
+
+  # Build with custom API endpoint
+  DEFAULT_URL_API=http://custom-api:5000 $0 saas-be-core develop
+
+FEATURES:
+  ✅ Multi-platform build support
+  ✅ SBOM (Software Bill of Materials) generation
+  ✅ Provenance attestation for security
+  ✅ Resource limit management
+  ✅ Automatic image caching
+  ✅ Bitbucket integration
+  ✅ Progress tracking
+
+BUILD PROCESS:
+  1. Fetch build metadata from API
+  2. Determine image name and build strategy
+  3. Load configuration from cicd.json
+  4. Execute Docker buildx with advanced features
+  5. Push image to registry
+
+EXIT CODES:
+  0 - Build successful
+  1 - Invalid arguments or build failed
+
+NOTES:
+  - Requires ~/.devops/auth.json for authentication
+  - Uses container-builder for multi-platform builds
+  - Images are automatically pushed to registry
+  - Build cache is disabled for reproducible builds
+
+For more information, visit: https://github.com/loyaltoid/devops-tools
+EOF
+}
+
+# -------------------------------
+# Validasi & parsing argumen
+# -------------------------------
+REPO=${1:-}
+REFS=${2:-}
+REBUILD=false
+CUSTOM_IMAGE=${4:-}
+
+# Tampilkan help jika argumen kurang atau --help
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+  show_help
+  exit 0
+fi
+
+# Tampilkan versi jika diminta
+if [[ "$1" == "--version" || "$1" == "-v" ]]; then
+  show_version
+  exit 0
+fi
+
+# Validasi argumen wajib
+if [[ -z "$REPO" ]]; then
+  echo "❌ Error: Repository name is required"
+  echo "   Usage: $(basename "$0") <REPO> <REFS> [--rebuild] [CUSTOM_IMAGE]"
+  echo "   Example: $(basename "$0") saas-be-core develop"
+  echo ""
+  echo "   Use --help for more information"
+  exit 1
+fi
+
+if [[ -z "$REFS" ]]; then
+  echo "❌ Error: Branch/tag name is required"
+  echo "   Usage: $(basename "$0") <REPO> <REFS> [--rebuild] [CUSTOM_IMAGE]"
+  echo "   Example: $(basename "$0") $REPO develop"
+  echo ""
+  echo "   Use --help for more information"
+  exit 1
+fi
+
+# Validasi format repository name (basic check)
+if [[ ! "$REPO" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  echo "❌ Error: Invalid repository name '$REPO'"
+  echo "   Repository name should contain only letters, numbers, hyphens, and underscores"
+  exit 1
+fi
+
+# Cek jika argumen ke-3 adalah --rebuild
+if [[ "${3:-}" == "--rebuild" ]]; then
+  REBUILD=true
+  echo "🔄 Rebuild mode enabled"
+elif [[ -n "${3:-}" && "${3:-}" != "--rebuild" ]]; then
+  echo "⚠️  Warning: Unknown argument '${3}' ignored"
+  echo "   Valid options: --rebuild, CUSTOM_IMAGE"
+fi
+
+# -------------------------------
+# Default resource limits
+# -------------------------------
+: "${DEFAULT_MEMORY:=2g}"
+: "${DEFAULT_CPUS:=1}"
+: "${DEFAULT_CPU_PERIOD:=100000}"
+: "${DEFAULT_CPU_QUOTA:=100000}"
+: "${DEFAULT_URL_API:=http://193.1.1.3:5000}"
+: "${REGISTRY01_URL:=}"
+: "${REFS:=}"
+: "${IMAGE:=}"
+: "${PORT:=}"
+: "${PORT2:=}"
+: "${GITUSERTOKEN:=}"
+: "${GITHUB_USER:=}"
+: "${GITHUB_TOKEN:=}"
+
+# -------------------------------
+# Ambil metadata dari API
+# -------------------------------
+echo "📦 Fetching build metadata for repo=$REPO, refs=$REFS ..."
+response=$(curl -sX GET "${DEFAULT_URL_API}/v1/image?repo=$REPO&refs=$REFS" -H "accept: application/json")
+
+# Check if API call was successful
+if [[ $? -ne 0 ]]; then
+  echo "❌ Error: Failed to fetch build metadata from API"
+  echo "   Please check your network connection and API endpoint"
+  exit 1
+fi
+
+# Check if response is valid JSON
+if ! echo "$response" | jq . >/dev/null 2>&1; then
+  echo "❌ Error: Invalid response from API"
+  echo "   Response: $response"
+  exit 1
+fi
+
+ready=$(echo "$response" | jq -r '.ready')
+
+# Check if ready field exists
+if [[ "$ready" == "null" ]]; then
+  echo "❌ Error: Invalid response format from API"
+  echo "   Missing 'ready' field in response"
+  exit 1
+fi
+
+# -------------------------------
+# Tentukan build_image
+# -------------------------------
+if [ -n "$CUSTOM_IMAGE" ]; then
+  build_image="$CUSTOM_IMAGE"
+  echo "📝 Using custom image: $build_image"
+elif [ "$REBUILD" = true ]; then
+  if [ "$ready" = "true" ]; then
+    build_image=$(echo "$response" | jq -r '.["image"]')
+    echo "♻️  Rebuilding existing image: $build_image"
+  else
+    build_image=$(echo "$response" | jq -r '.["build-image"]')
+    echo "🆕 Building new image: $build_image"
+  fi
+else
+  if [ "$ready" = "true" ]; then
+    build_image=$(echo "$response" | jq -r '.["image"]')
+    echo "✅ Image already ready: $build_image. Skipping build."
+    exit 0
+  else
+    build_image=$(echo "$response" | jq -r '.["build-image"]')
+    echo "🆕 Building new image: $build_image"
+  fi
+fi
+
+
+# -------------------------------
+# Jalankan proses build
+# -------------------------------
+echo "🚧 Starting build process..."
+echo "📋 Build configuration:"
+echo "   Repository: $REPO"
+echo "   Branch/Tag: $REFS"
+echo "   Image: $build_image"
+echo "   Rebuild: $REBUILD"
+echo "   Memory: $DEFAULT_MEMORY"
+echo "   CPUs: $DEFAULT_CPUS"
+
+# Fetch configuration from API
+echo "📥 Fetching build configuration..."
+config_response=$(curl -sX GET "${DEFAULT_URL_API}/v1/file?repo=$REPO&refs=$REFS&path=cicd%2Fcicd.json" -H "accept: application/json")
+
+# Check if config API call was successful
+if [[ $? -ne 0 ]]; then
+  echo "❌ Error: Failed to fetch build configuration from API"
+  exit 1
+fi
+
+# Check if config response is valid JSON
+if ! echo "$config_response" | jq . >/dev/null 2>&1; then
+  echo "❌ Error: Invalid configuration response from API"
+  echo "   Response: $config_response"
+  exit 1
+fi
+
+# Load configuration
+eval "$(echo "$config_response" | jq -r '. | to_entries | .[] | .key + "=\"" + .value + "\""')"
+
+# Load authentication
+if [[ ! -f ~/.devops/auth.json ]]; then
+  echo "❌ Error: Authentication file ~/.devops/auth.json not found"
+  echo "   Please ensure the authentication file exists and is accessible"
+  exit 1
+fi
+
+eval "$(jq -r '. | to_entries | .[] | .key + "=\"" + .value + "\""' < ~/.devops/auth.json)"
+
+# Parse .netrc for Bitbucket credentials
+NETRC_FILE="${HOME}/.netrc"
+if [[ -f "$NETRC_FILE" ]]; then
+  BITBUCKET_USER=$(awk '/machine bitbucket.org/{found=1} found && /login/{print $2; exit}' "$NETRC_FILE")
+  BITBUCKET_TOKEN=$(awk '/machine bitbucket.org/{found=1} found && /password/{print $2; exit}' "$NETRC_FILE")
+  if [[ -z "$BITBUCKET_USER" || -z "$BITBUCKET_TOKEN" ]]; then
+    echo "❌ Error: Bitbucket credentials not found in ~/.netrc"
+    echo "   Expected format:"
+    echo "   machine bitbucket.org"
+    echo "     login YOUR_USERNAME"
+    echo "     password YOUR_APP_PASSWORD"
+    exit 1
+  fi
+  echo "✅ Loaded Bitbucket credentials from .netrc"
+else
+  echo "❌ Error: ~/.netrc file not found"
+  exit 1
+fi
+
+# Check and create buildx builder if not exists
+BUILDER_NAME="container-builder"
+if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then
+  echo "🔧 Creating buildx builder: $BUILDER_NAME"
+  docker buildx create --name "$BUILDER_NAME" --driver docker-container --use
+  docker buildx inspect --bootstrap "$BUILDER_NAME"
+fi
+
+echo "🔨 Executing Docker buildx command..."
+docker buildx build \
+  --builder "$BUILDER_NAME" \
+  --sbom=true \
+  --no-cache \
+  --attest type=provenance,mode=max \
+  --memory "$DEFAULT_MEMORY" \
+  --cpu-period "$DEFAULT_CPU_PERIOD" \
+  --cpu-quota "$DEFAULT_CPU_QUOTA" \
+  --progress=plain \
+  --build-arg REGISTRY01="$REGISTRY01_URL" \
+  --build-arg BRANCH="$REFS" \
+  --build-arg PROJECT="$IMAGE" \
+  --build-arg PORT="$PORT" \
+  --build-arg PORT2="$PORT2" \
+  --build-arg GITUSERTOKEN="$GITUSERTOKEN" \
+  --build-arg GITHUB_USER="$GITHUB_USER" \
+  --build-arg GITHUB_TOKEN="$GITHUB_TOKEN" \
+  -t "$build_image" \
+  --push \
+  "https://${BITBUCKET_USER}:${BITBUCKET_TOKEN}@bitbucket.org/loyaltoid/${REPO}.git#${REFS}"
+
+echo "✅ Build complete: $build_image"
