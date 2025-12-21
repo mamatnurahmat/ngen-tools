@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI dispatcher for ngen-j Jenkins management tool."""
+"""CLI dispatcher for japi Jenkins management tool."""
 
 import sys
 import os
@@ -21,7 +21,7 @@ def find_script(command: str) -> Path:
     """
     # Check in bundled scripts only
     package_dir = Path(__file__).parent
-    bundled_script = package_dir / "scripts" / f"ngen-j-{command}"
+    bundled_script = package_dir / "scripts" / f"japi-{command}"
     if bundled_script.exists() and bundled_script.is_file():
         return bundled_script
 
@@ -64,7 +64,7 @@ def handle_login_command(args: list) -> int:
     """
     import getpass
 
-    print("ngen-j Jenkins Login")
+    print("japi Jenkins Login")
     print("===================")
 
     # Get current env vars
@@ -210,7 +210,7 @@ def handle_check_command(args: list) -> int:
     Returns:
         Exit code
     """
-    print("ngen-j Jenkins Connection Check")
+    print("japi Jenkins Connection Check")
     print("==============================")
 
     try:
@@ -268,7 +268,7 @@ def handle_check_command(args: list) -> int:
         print(f"❌ Jenkins connection failed: {e}")
         print("\nTroubleshooting:")
         print("1. Check if Jenkins URL is correct and accessible")
-        print("2. Verify your credentials using 'ngen-j login'")
+        print("2. Verify your credentials using 'japi login'")
         print("3. Ensure Jenkins user has API access permissions")
         print("4. Check network connectivity and firewall settings")
         print("5. For HTTPS, ensure SSL certificates are valid")
@@ -279,12 +279,12 @@ def main():
     """Main entry point for ngen-j command."""
     # Handle version flag
     if len(sys.argv) >= 2 and sys.argv[1] in ("--version", "-V"):
-        print(f"ngen-j version {__version__}")
+        print(f"japi version {__version__}")
         sys.exit(0)
     
     if len(sys.argv) < 2:
-        print("Usage: ngen-j <command> [args...]", file=sys.stderr)
-        print("\nngen-j is a Jenkins API management CLI tool.", file=sys.stderr)
+        print("Usage: japi <command> [args...]", file=sys.stderr)
+        print("\njapi is a Jenkins API management CLI tool.", file=sys.stderr)
         print("\nBuilt-in commands:", file=sys.stderr)
         print("  login             Save Jenkins credentials", file=sys.stderr)
         print("  check             Validate Jenkins access", file=sys.stderr)
@@ -298,44 +298,49 @@ def main():
         print("  create <name> <xml> Create/update job from XML", file=sys.stderr)
         print("  delete <name>     Delete a job", file=sys.stderr)
         print("  plugin list       List installed plugins", file=sys.stderr)
+        print("  plugin backup     Backup plugins to JSON/TXT file", file=sys.stderr)
+        print("  plugin restore    Restore/install plugins from backup", file=sys.stderr)
         print("  plugin install   Install plugin(s)", file=sys.stderr)
         print("  plugin uninstall Uninstall plugin(s)", file=sys.stderr)
-        print("                    Use --format json|csv and --output <file> for export", file=sys.stderr)
+        print("                    Use --format json|csv|txt and --output <file> for export", file=sys.stderr)
         print("  cred list         List all credentials", file=sys.stderr)
         print("  cred create       Create credential (interactive or non-interactive)", file=sys.stderr)
         print("  cred delete <id>  Delete credential", file=sys.stderr)
         print("\nScript commands:", file=sys.stderr)
         print("  <script-name>     Execute bundled script", file=sys.stderr)
         print("\nExamples:", file=sys.stderr)
-        print("  ngen-j --version", file=sys.stderr)
-        print("  ngen-j jobs", file=sys.stderr)
-        print("  ngen-j job my-job", file=sys.stderr)
-        print("  ngen-j job --last-success", file=sys.stderr)
-        print("  ngen-j job --last-failure", file=sys.stderr)
-        print("  ngen-j build my-job", file=sys.stderr)
-        print("  ngen-j build my-job --param REF_NAME=develop", file=sys.stderr)
-        print("  ngen-j build my-job --param=REF_NAME=develop", file=sys.stderr)
-        print("  ngen-j log my-job 42", file=sys.stderr)
-        print("  ngen-j get-xml my-job", file=sys.stderr)
-        print("  ngen-j create my-job job.xml", file=sys.stderr)
-        print("  ngen-j delete my-job", file=sys.stderr)
-        print("  ngen-j delete my-job --force", file=sys.stderr)
-        print("  ngen-j plugin list", file=sys.stderr)
-        print("  ngen-j plugin list --format json --output plugins.json", file=sys.stderr)
-        print("  ngen-j plugin list --format csv --output plugins.csv", file=sys.stderr)
-        print("  ngen-j plugin install git", file=sys.stderr)
-        print("  ngen-j plugin uninstall git", file=sys.stderr)
-        print("  ngen-j cred list", file=sys.stderr)
-        print("  ngen-j cred create", file=sys.stderr)
-        print("  ngen-j cred delete my-cred", file=sys.stderr)
+        print("  japi --version", file=sys.stderr)
+        print("  japi jobs", file=sys.stderr)
+        print("  japi job my-job", file=sys.stderr)
+        print("  japi job --last-success", file=sys.stderr)
+        print("  japi job --last-failure", file=sys.stderr)
+        print("  japi build my-job", file=sys.stderr)
+        print("  japi build my-job --param REF_NAME=develop", file=sys.stderr)
+        print("  japi build my-job --param=REF_NAME=develop", file=sys.stderr)
+        print("  japi log my-job 42", file=sys.stderr)
+        print("  japi get-xml my-job", file=sys.stderr)
+        print("  japi create my-job job.xml", file=sys.stderr)
+        print("  japi delete my-job", file=sys.stderr)
+        print("  japi delete my-job --force", file=sys.stderr)
+        print("  japi plugin list", file=sys.stderr)
+        print("  japi plugin list --format json --output plugins.json", file=sys.stderr)
+        print("  japi plugin list --format csv --output plugins.csv", file=sys.stderr)
+        print("  japi plugin list --format txt --output plugins.txt", file=sys.stderr)
+        print("  japi plugin backup --file plugins.txt --format txt", file=sys.stderr)
+        print("  japi plugin restore --file plugins.txt", file=sys.stderr)
+        print("  japi plugin install git", file=sys.stderr)
+        print("  japi plugin uninstall git", file=sys.stderr)
+        print("  japi cred list", file=sys.stderr)
+        print("  japi cred create", file=sys.stderr)
+        print("  japi cred delete my-cred", file=sys.stderr)
         sys.exit(0)
     
     command = sys.argv[1]
     
     # Handle help flags
     if command in ("-h", "--help", "help"):
-        print("Usage: ngen-j <command> [args...]", file=sys.stderr)
-        print("\nngen-j is a Jenkins API management CLI tool.", file=sys.stderr)
+        print("Usage: japi <command> [args...]", file=sys.stderr)
+        print("\njapi is a Jenkins API management CLI tool.", file=sys.stderr)
         print("\nBuilt-in commands:", file=sys.stderr)
         print("  login             Save Jenkins credentials", file=sys.stderr)
         print("  check             Validate Jenkins access", file=sys.stderr)
@@ -355,30 +360,43 @@ def main():
         print("  cred list         List all credentials", file=sys.stderr)
         print("  cred create       Create credential (interactive or non-interactive)", file=sys.stderr)
         print("  cred delete <id>  Delete credential", file=sys.stderr)
+        print("  cred backup       Backup all credentials to JSON", file=sys.stderr)
+        print("  cred restore      Restore credentials from JSON", file=sys.stderr)
+        print("  user list         List all users", file=sys.stderr)
+        print("  user backup       Backup all users to JSON", file=sys.stderr)
+        print("  user restore      Restore users from JSON", file=sys.stderr)
         print("\nScript commands:", file=sys.stderr)
         print("  <script-name>     Execute bundled script", file=sys.stderr)
         print("\nExamples:", file=sys.stderr)
-        print("  ngen-j --version", file=sys.stderr)
-        print("  ngen-j jobs", file=sys.stderr)
-        print("  ngen-j job my-job", file=sys.stderr)
-        print("  ngen-j job --last-success", file=sys.stderr)
-        print("  ngen-j job --last-failure", file=sys.stderr)
-        print("  ngen-j build my-job", file=sys.stderr)
-        print("  ngen-j build my-job --param REF_NAME=develop", file=sys.stderr)
-        print("  ngen-j build my-job --param=REF_NAME=develop", file=sys.stderr)
-        print("  ngen-j log my-job 42", file=sys.stderr)
-        print("  ngen-j get-xml my-job", file=sys.stderr)
-        print("  ngen-j create my-job job.xml", file=sys.stderr)
-        print("  ngen-j delete my-job", file=sys.stderr)
-        print("  ngen-j delete my-job --force", file=sys.stderr)
-        print("  ngen-j plugin list", file=sys.stderr)
-        print("  ngen-j plugin list --format json --output plugins.json", file=sys.stderr)
-        print("  ngen-j plugin list --format csv --output plugins.csv", file=sys.stderr)
-        print("  ngen-j plugin install git", file=sys.stderr)
-        print("  ngen-j plugin uninstall git", file=sys.stderr)
-        print("  ngen-j cred list", file=sys.stderr)
-        print("  ngen-j cred create", file=sys.stderr)
-        print("  ngen-j cred delete my-cred", file=sys.stderr)
+        print("  japi --version", file=sys.stderr)
+        print("  japi jobs", file=sys.stderr)
+        print("  japi job my-job", file=sys.stderr)
+        print("  japi job --last-success", file=sys.stderr)
+        print("  japi job --last-failure", file=sys.stderr)
+        print("  japi build my-job", file=sys.stderr)
+        print("  japi build my-job --param REF_NAME=develop", file=sys.stderr)
+        print("  japi build my-job --param=REF_NAME=develop", file=sys.stderr)
+        print("  japi log my-job 42", file=sys.stderr)
+        print("  japi get-xml my-job", file=sys.stderr)
+        print("  japi create my-job job.xml", file=sys.stderr)
+        print("  japi delete my-job", file=sys.stderr)
+        print("  japi delete my-job --force", file=sys.stderr)
+        print("  japi plugin list", file=sys.stderr)
+        print("  japi plugin list --format json --output plugins.json", file=sys.stderr)
+        print("  japi plugin list --format csv --output plugins.csv", file=sys.stderr)
+        print("  japi plugin list --format txt --output plugins.txt", file=sys.stderr)
+        print("  japi plugin backup --file plugins.txt --format txt", file=sys.stderr)
+        print("  japi plugin restore --file plugins.txt", file=sys.stderr)
+        print("  japi plugin install git", file=sys.stderr)
+        print("  japi plugin uninstall git", file=sys.stderr)
+        print("  japi cred list", file=sys.stderr)
+        print("  japi cred create", file=sys.stderr)
+        print("  japi cred delete my-cred", file=sys.stderr)
+        print("  japi cred backup --file my-backup.json", file=sys.stderr)
+        print("  japi cred restore --file my-backup.json --force", file=sys.stderr)
+        print("  japi user list", file=sys.stderr)
+        print("  japi user backup --file users.json", file=sys.stderr)
+        print("  japi user restore --file users.json --password newpass123", file=sys.stderr)
         sys.exit(0)
     
     # Handle login command
@@ -477,9 +495,9 @@ def main():
         # Default behavior: get specific job
         if not args:
             print("Error: job name required or use --last-success/--last-failure", file=sys.stderr)
-            print("Usage: ngen-j job <name>", file=sys.stderr)
-            print("       ngen-j job --last-success", file=sys.stderr)
-            print("       ngen-j job --last-failure", file=sys.stderr)
+            print("Usage: japi job <name>", file=sys.stderr)
+            print("       japi job --last-success", file=sys.stderr)
+            print("       japi job --last-failure", file=sys.stderr)
             sys.exit(1)
 
         job_name = args[0]
@@ -555,7 +573,7 @@ def main():
             i += 1
 
         if len(filtered_args) != 1:
-            print("Usage: ngen-j build <job-name> [--param KEY1=VALUE1 KEY2=VALUE2 ...] or [--param=KEY=VALUE ...]", file=sys.stderr)
+            print("Usage: japi build <job-name> [--param KEY1=VALUE1 KEY2=VALUE2 ...] or [--param=KEY=VALUE ...]", file=sys.stderr)
             print("  --param KEY=VALUE ...  Pass multiple build parameters after single --param flag", file=sys.stderr)
             print("  --param=KEY=VALUE      Alternative format for build parameters", file=sys.stderr)
             sys.exit(1)
@@ -584,7 +602,7 @@ def main():
             args.remove('--force')
 
         if len(args) != 2:
-            print("Usage: ngen-j create <job-name> <xml-file> [--force]", file=sys.stderr)
+            print("Usage: japi create <job-name> <xml-file> [--force]", file=sys.stderr)
             print("  --force    Skip confirmation when updating existing job", file=sys.stderr)
             sys.exit(1)
 
@@ -628,7 +646,7 @@ def main():
             args.remove('--force')
 
         if len(args) != 1:
-            print("Usage: ngen-j delete <job-name> [--force]", file=sys.stderr)
+            print("Usage: japi delete <job-name> [--force]", file=sys.stderr)
             print("  --force    Skip confirmation before deleting job", file=sys.stderr)
             sys.exit(1)
 
@@ -651,7 +669,7 @@ def main():
     if command == "get-xml":
         if len(sys.argv) < 3:
             print("Error: job name required", file=sys.stderr)
-            print("Usage: ngen-j get-xml <job-name>", file=sys.stderr)
+            print("Usage: japi get-xml <job-name>", file=sys.stderr)
             sys.exit(1)
         job_name = sys.argv[2]
         client = JenkinsClient()
@@ -663,7 +681,7 @@ def main():
     if command == "log":
         if len(sys.argv) < 4:
             print("Error: job name and build number required", file=sys.stderr)
-            print("Usage: ngen-j log <job-name> <build-number>", file=sys.stderr)
+            print("Usage: japi log <job-name> <build-number>", file=sys.stderr)
             sys.exit(1)
         job_name = sys.argv[2]
         try:
@@ -683,11 +701,16 @@ def main():
     if command == "cred":
         if len(sys.argv) < 3:
             print("Error: cred subcommand required", file=sys.stderr)
-            print("Usage: ngen-j cred <list|create|delete> [args...]", file=sys.stderr)
+            print("Usage: japi cred <list|create|delete> [args...]", file=sys.stderr)
             print("\nCredential management commands:", file=sys.stderr)
             print("  list                    List all credentials", file=sys.stderr)
             print("  create                  Create a new credential (interactive)", file=sys.stderr)
             print("  delete <id>             Delete a credential", file=sys.stderr)
+            print("  backup                  Backup all credentials to JSON", file=sys.stderr)
+            print("  restore                 Restore credentials from JSON", file=sys.stderr)
+            print("\nBackup/Restore options:", file=sys.stderr)
+            print("  --file <file>           Backup file path (default: jenkins_credentials_backup.json)", file=sys.stderr)
+            print("  --force                (Restore only) Overwrite existing credentials", file=sys.stderr)
             print("\nCreate credential options (non-interactive):", file=sys.stderr)
             print("  --type <type>           Credential type: username_password, secret_text, ssh_key", file=sys.stderr)
             print("  --id <id>               Credential ID", file=sys.stderr)
@@ -970,7 +993,7 @@ def main():
         elif subcommand == "delete":
             if len(sys.argv) < 4:
                 print("Error: credential ID required", file=sys.stderr)
-                print("Usage: ngen-j cred delete <credential-id> [--force]", file=sys.stderr)
+                print("Usage: japi cred delete <credential-id> [--force]", file=sys.stderr)
                 sys.exit(1)
             
             cred_id = sys.argv[3]
@@ -991,19 +1014,210 @@ def main():
                 sys.exit(1)
             sys.exit(0)
 
+        elif subcommand == "backup":
+            args = sys.argv[3:]
+            output_file = "jenkins_credentials_backup.json"
+            
+            if "--file" in args:
+                idx = args.index("--file")
+                if idx + 1 < len(args):
+                    output_file = args[idx + 1]
+                else:
+                    print("Error: --file requires a filename", file=sys.stderr)
+                    sys.exit(1)
+            elif "-f" in args:
+                idx = args.index("-f")
+                if idx + 1 < len(args):
+                    output_file = args[idx + 1]
+                else:
+                    print("Error: -f requires a filename", file=sys.stderr)
+                    sys.exit(1)
+            
+            result = client.backup_credentials(output_file)
+            if result['status'] == 'success':
+                print(f"✅ {result['message']}")
+            else:
+                print(f"❌ Backup failed: {result.get('error', 'Unknown error')}")
+                sys.exit(1)
+            sys.exit(0)
+
+        elif subcommand == "restore":
+            args = sys.argv[3:]
+            input_file = None
+            force = "--force" in args
+            
+            if "--file" in args:
+                idx = args.index("--file")
+                if idx + 1 < len(args):
+                    input_file = args[idx + 1]
+            elif "-f" in args:
+                idx = args.index("-f")
+                if idx + 1 < len(args):
+                    input_file = args[idx + 1]
+            
+            if not input_file:
+                # Try to find default backup file in current dir
+                if os.path.exists("jenkins_credentials_backup.json"):
+                    input_file = "jenkins_credentials_backup.json"
+                else:
+                    print("Error: Backup file required. Use --file <filename>", file=sys.stderr)
+                    sys.exit(1)
+            
+            if not force:
+                response = input(f"Are you sure you want to restore credentials from '{input_file}'? This may skip existing ones unless you use --force. (y/N): ").strip().lower()
+                if response not in ['y', 'yes']:
+                    print("Restore cancelled.")
+                    sys.exit(0)
+                    
+            result = client.restore_credentials(input_file, force=force)
+            if result['status'] == 'success':
+                print(f"✅ {result['message']}")
+                if result.get('failed_count', 0) > 0:
+                    print(f"⚠️  {result['failed_count']} credentials failed to restore.")
+                if result.get('skipped_count', 0) > 0:
+                    print(f"ℹ️  {result['skipped_count']} credentials skipped (already exist). Use --force to overwrite.")
+            else:
+                print(f"❌ Restore failed: {result.get('error', 'Unknown error')}")
+                sys.exit(1)
+            sys.exit(0)
+
         else:
             print(f"Error: Unknown cred subcommand '{subcommand}'", file=sys.stderr)
-            print("Usage: ngen-j cred <list|create|delete> [args...]", file=sys.stderr)
+            print("Usage: japi cred <list|create|delete> [args...]", file=sys.stderr)
+            sys.exit(1)
+
+    # Handle user command
+    if command == "user":
+        if len(sys.argv) < 3:
+            print("Error: user subcommand required", file=sys.stderr)
+            print("Usage: japi user <list|backup|restore> [args...]", file=sys.stderr)
+            print("\nUser management commands:", file=sys.stderr)
+            print("  list                    List all users", file=sys.stderr)
+            print("  backup                  Backup all users to JSON", file=sys.stderr)
+            print("  restore                 Restore users from JSON", file=sys.stderr)
+            print("\nBackup/Restore options:", file=sys.stderr)
+            print("  --file <file>           Backup file path (default: jenkins_users_backup.json)", file=sys.stderr)
+            print("  --password <pass>       (Restore only) Default password for restored users", file=sys.stderr)
+            print("  --force                 (Restore only) Overwrite existing users", file=sys.stderr)
+            sys.exit(1)
+
+        subcommand = sys.argv[2]
+        client = JenkinsClient()
+
+        if subcommand == "list":
+            users = client.list_users()
+            
+            if users:
+                print("Jenkins Users:")
+                print("=" * 80)
+                print(f"{'ID':<25} {'Full Name':<30} {'Email':<25}")
+                print("=" * 80)
+                for user in users:
+                    user_id = user.get('id', 'N/A')
+                    full_name = user.get('fullName', 'N/A')
+                    if len(full_name) > 28:
+                        full_name = full_name[:25] + "..."
+                    email = user.get('email', '')
+                    if len(email) > 23:
+                        email = email[:20] + "..."
+                    print(f"{user_id:<25} {full_name:<30} {email:<25}")
+                print(f"\nTotal: {len(users)} users")
+            else:
+                print("No users found.")
+            sys.exit(0)
+
+        elif subcommand == "backup":
+            args = sys.argv[3:]
+            output_file = "jenkins_users_backup.json"
+            
+            if "--file" in args:
+                idx = args.index("--file")
+                if idx + 1 < len(args):
+                    output_file = args[idx + 1]
+                else:
+                    print("Error: --file requires a filename", file=sys.stderr)
+                    sys.exit(1)
+            elif "-f" in args:
+                idx = args.index("-f")
+                if idx + 1 < len(args):
+                    output_file = args[idx + 1]
+                else:
+                    print("Error: -f requires a filename", file=sys.stderr)
+                    sys.exit(1)
+            
+            result = client.backup_users(output_file)
+            if result['status'] == 'success':
+                print(f"✅ {result['message']}")
+            else:
+                print(f"❌ Backup failed: {result.get('error', 'Unknown error')}")
+                sys.exit(1)
+            sys.exit(0)
+
+        elif subcommand == "restore":
+            args = sys.argv[3:]
+            input_file = None
+            force = "--force" in args
+            default_password = "changeme"
+            
+            if "--file" in args:
+                idx = args.index("--file")
+                if idx + 1 < len(args):
+                    input_file = args[idx + 1]
+            elif "-f" in args:
+                idx = args.index("-f")
+                if idx + 1 < len(args):
+                    input_file = args[idx + 1]
+            
+            if "--password" in args:
+                idx = args.index("--password")
+                if idx + 1 < len(args):
+                    default_password = args[idx + 1]
+            
+            if not input_file:
+                # Try to find default backup file in current dir
+                if os.path.exists("jenkins_users_backup.json"):
+                    input_file = "jenkins_users_backup.json"
+                else:
+                    print("Error: Backup file required. Use --file <filename>", file=sys.stderr)
+                    sys.exit(1)
+            
+            if not force:
+                response = input(f"Are you sure you want to restore users from '{input_file}'? (y/N): ").strip().lower()
+                if response not in ['y', 'yes']:
+                    print("Restore cancelled.")
+                    sys.exit(0)
+                    
+            result = client.restore_users(input_file, default_password=default_password, force=force)
+            if result['status'] == 'success':
+                print(f"✅ {result['message']}")
+                if result.get('failed_count', 0) > 0:
+                    print(f"⚠️  {result['failed_count']} users failed to restore.")
+                if result.get('skipped_count', 0) > 0:
+                    print(f"ℹ️  {result['skipped_count']} users skipped (already exist). Use --force to overwrite.")
+                print(f"\n💡 Note: Restored users have default password '{default_password}'. Please change it.")
+            else:
+                print(f"❌ Restore failed: {result.get('error', 'Unknown error')}")
+                sys.exit(1)
+            sys.exit(0)
+
+        else:
+            print(f"Error: Unknown user subcommand '{subcommand}'", file=sys.stderr)
+            print("Usage: japi user <list|backup|restore> [args...]", file=sys.stderr)
             sys.exit(1)
 
     # Handle plugin command
     if command == "plugin":
         if len(sys.argv) < 3:
             print("Error: plugin subcommand required", file=sys.stderr)
-            print("Usage: ngen-j plugin <list|install|uninstall> [args...]", file=sys.stderr)
+            print("Usage: japi plugin <list|install|uninstall|backup|restore> [args...]", file=sys.stderr)
             print("\nPlugin list options:", file=sys.stderr)
-            print("  --format <json|csv>  Export format (default: table)", file=sys.stderr)
-            print("  --output <file>      Output file (optional, defaults to stdout)", file=sys.stderr)
+            print("  --format <json|csv|txt>  Export format (default: table)", file=sys.stderr)
+            print("                           txt = plugins.txt format (name:version) for Docker builds", file=sys.stderr)
+            print("  --output <file>          Output file (optional, defaults to stdout)", file=sys.stderr)
+            print("\nPlugin backup/restore options:", file=sys.stderr)
+            print("  backup --file <file>     Backup plugins (default: plugins_backup.json)", file=sys.stderr)
+            print("         --format txt      Use plugins.txt format instead of JSON", file=sys.stderr)
+            print("  restore --file <file>    Restore/install plugins from backup file", file=sys.stderr)
             sys.exit(1)
 
         subcommand = sys.argv[2]
@@ -1021,7 +1235,7 @@ def main():
                     output_format = args[format_idx + 1].lower()
                     args = args[:format_idx] + args[format_idx + 2:]
                 else:
-                    print("Error: --format requires a value (json or csv)", file=sys.stderr)
+                    print("Error: --format requires a value (json, csv, or txt)", file=sys.stderr)
                     sys.exit(1)
 
             if '--output' in args or '-o' in args:
@@ -1072,6 +1286,27 @@ def main():
                         row['enabled'] = 'Yes' if row.get('enabled', True) else 'No'
                         writer.writerow(row)
                 sys.exit(0)
+            elif output_format == 'txt':
+                # plugins.txt format: name:version per line
+                if not plugins:
+                    print("No plugins found.")
+                    sys.exit(0)
+                
+                lines = []
+                for plugin in plugins:
+                    name = plugin.get('name', '')
+                    version = plugin.get('version', '')
+                    if name:
+                        lines.append(f"{name}:{version}")
+                
+                output_data = '\n'.join(sorted(lines))
+                if output_file:
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        f.write(output_data)
+                    print(f"✅ Plugins exported to {output_file} (plugins.txt format)")
+                else:
+                    print(output_data)
+                sys.exit(0)
             else:
                 # Default table format
                 if plugins:
@@ -1092,7 +1327,7 @@ def main():
         elif subcommand == "install":
             if len(sys.argv) < 4:
                 print("Error: plugin name(s) required", file=sys.stderr)
-                print("Usage: ngen-j plugin install <plugin1> [plugin2] ...", file=sys.stderr)
+                print("Usage: japi plugin install <plugin1> [plugin2] ...", file=sys.stderr)
                 sys.exit(1)
 
             plugin_names = sys.argv[3:]
@@ -1109,7 +1344,7 @@ def main():
         elif subcommand == "uninstall":
             if len(sys.argv) < 4:
                 print("Error: plugin name(s) required", file=sys.stderr)
-                print("Usage: ngen-j plugin uninstall <plugin1> [plugin2] ...", file=sys.stderr)
+                print("Usage: japi plugin uninstall <plugin1> [plugin2] ...", file=sys.stderr)
                 sys.exit(1)
 
             plugin_names = sys.argv[3:]
@@ -1123,9 +1358,76 @@ def main():
                 sys.exit(1)
             sys.exit(0)
 
+        elif subcommand == "backup":
+            args = sys.argv[3:]
+            output_file = "plugins_backup.json"
+            format_type = "json"
+            
+            if "--file" in args:
+                idx = args.index("--file")
+                if idx + 1 < len(args):
+                    output_file = args[idx + 1]
+            elif "-f" in args:
+                idx = args.index("-f")
+                if idx + 1 < len(args):
+                    output_file = args[idx + 1]
+            
+            if "--format" in args:
+                idx = args.index("--format")
+                if idx + 1 < len(args):
+                    format_type = args[idx + 1].lower()
+                    if format_type == 'txt':
+                        if not output_file.endswith('.txt'):
+                            output_file = output_file.replace('.json', '.txt') if output_file.endswith('.json') else output_file + '.txt'
+            
+            result = client.backup_plugins(output_file, format_type)
+            if result['status'] == 'success':
+                print(f"✅ {result['message']}")
+                if format_type == 'txt':
+                    print(f"💡 This file can be used with jenkins-plugin-cli or in Dockerfile:")
+                    print(f"   jenkins-plugin-cli --plugin-file {output_file}")
+            else:
+                print(f"❌ Backup failed: {result.get('error', 'Unknown error')}")
+                sys.exit(1)
+            sys.exit(0)
+
+        elif subcommand == "restore":
+            args = sys.argv[3:]
+            input_file = None
+            block = "--wait" in args or "--block" in args
+            
+            if "--file" in args:
+                idx = args.index("--file")
+                if idx + 1 < len(args):
+                    input_file = args[idx + 1]
+            elif "-f" in args:
+                idx = args.index("-f")
+                if idx + 1 < len(args):
+                    input_file = args[idx + 1]
+            
+            if not input_file:
+                # Try to find default backup files
+                for default_file in ["plugins_backup.json", "plugins.txt", "plugins_backup.txt"]:
+                    if os.path.exists(default_file):
+                        input_file = default_file
+                        break
+                
+                if not input_file:
+                    print("Error: Backup file required. Use --file <filename>", file=sys.stderr)
+                    sys.exit(1)
+            
+            result = client.restore_plugins(input_file, block=block)
+            if result['status'] == 'success':
+                print(f"✅ {result['message']}")
+                print("💡 Note: Jenkins restart may be required to complete plugin installation.")
+            else:
+                print(f"❌ Restore failed: {result.get('error', 'Unknown error')}")
+                sys.exit(1)
+            sys.exit(0)
+
         else:
             print(f"Error: Unknown plugin subcommand '{subcommand}'", file=sys.stderr)
-            print("Usage: ngen-j plugin <list|install|uninstall> [args...]", file=sys.stderr)
+            print("Usage: japi plugin <list|install|uninstall|backup|restore> [args...]", file=sys.stderr)
             sys.exit(1)
 
     # Try to find and execute script
@@ -1138,7 +1440,7 @@ def main():
     
     # Command not found
     print(f"Error: command '{command}' not found", file=sys.stderr)
-    print(f"Expected bundled script: ngen-j-{command}", file=sys.stderr)
+    print(f"Expected bundled script: japi-{command}", file=sys.stderr)
     sys.exit(1)
 
 

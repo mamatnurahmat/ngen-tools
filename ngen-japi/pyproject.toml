@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ngen-j"
-version = "0.1.3"
+name = "ngen-japi"
+version = "0.1.4"
 description = "Jenkins API management CLI and universal command wrapper package"
 readme = "README.md"
 requires-python = ">=3.7"
@@ -28,21 +28,21 @@ classifiers = [
 ]
 
 [project.scripts]
-ngen-j = "ngen_j.cli:main"
+japi = "ngen_japi.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/mamatnurahmat/ngen-j"
-Repository = "https://github.com/mamatnurahmat/ngen-j"
-Issues = "https://github.com/mamatnurahmat/ngen-j/issues"
+Homepage = "https://github.com/mamatnurahmat/ngen-japi"
+Repository = "https://github.com/mamatnurahmat/ngen-japi"
+Issues = "https://github.com/mamatnurahmat/ngen-japi/issues"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.package-dir]
 "" = "."
-ngen_j = "ngen_j"
+ngen_japi = "ngen_japi"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ngen_j*"]
+include = ["ngen_japi*"]
 

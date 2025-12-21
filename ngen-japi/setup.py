@@ -9,7 +9,7 @@ long_description = readme_file.read_text() if readme_file.exists() else ""
 
 
 setup(
-    packages=["ngen_j"],
-    package_dir={"ngen_j": "ngen_j"},
+    packages=["ngen_japi"],
+    package_dir={"ngen_japi": "ngen_japi"},
 )
 

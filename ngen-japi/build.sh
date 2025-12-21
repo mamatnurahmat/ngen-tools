@@ -24,12 +24,12 @@ try:
         if match:
             print(match.group(1))
         else:
-            print('ngen-j')
+            print('ngen-japi')
 except:
-    print('ngen-j')
-" 2>/dev/null || echo "ngen-j")
+    print('ngen-japi')
+" 2>/dev/null || echo "ngen-japi")
 else
-    PACKAGE_NAME="ngen-j"
+    PACKAGE_NAME="ngen-japi"
 fi
 
 PYPI_REPO="pypi"
@@ -244,14 +244,14 @@ except Exception:
         sed -i "s/version = \"$current_version\"/version = \"$new_version\"/g" pyproject.toml
     fi
     
-    # Update ngen_j/__init__.py
-    if [ -f "ngen_j/__init__.py" ]; then
+    # Update ngen_japi/__init__.py
+    if [ -f "ngen_japi/__init__.py" ]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
             # macOS
-            sed -i '' "s/__version__ = \"$current_version\"/__version__ = \"$new_version\"/g" ngen_j/__init__.py
+            sed -i '' "s/__version__ = \"$current_version\"/__version__ = \"$new_version\"/g" ngen_japi/__init__.py
         else
             # Linux
-            sed -i "s/__version__ = \"$current_version\"/__version__ = \"$new_version\"/g" ngen_j/__init__.py
+            sed -i "s/__version__ = \"$current_version\"/__version__ = \"$new_version\"/g" ngen_japi/__init__.py
         fi
     fi
     
@@ -294,8 +294,8 @@ check_package() {
         exit 1
     fi
     
-    if [ ! -d "ngen_j" ]; then
-        print_error "ngen_j package directory not found!"
+    if [ ! -d "ngen_japi" ]; then
+        print_error "ngen_japi package directory not found!"
         exit 1
     fi
     
@@ -338,9 +338,9 @@ test_package() {
 import sys
 sys.path.insert(0, '.')
 # Test that ngen_j directory exists and can be imported
-import ngen_j
-print('✅ Package directory (ngen_j) imported successfully')
-# After install, 'ngen_j' will be available via package_dir mapping
+import ngen_japi
+print('✅ Package directory (ngen_japi) imported successfully')
+# After install, 'ngen_japi' will be available via package_dir mapping
 " 2>/dev/null; then
         ((test_passed++))
     else
@@ -353,8 +353,8 @@ print('✅ Package directory (ngen_j) imported successfully')
     if python3 -c "
 import sys
 sys.path.insert(0, '.')
-import ngen_j
-print(f'✅ Version: {ngen_j.__version__}')
+import ngen_japi
+print(f'✅ Version: {ngen_japi.__version__}')
 " 2>/dev/null; then
         ((test_passed++))
     else
@@ -367,7 +367,7 @@ print(f'✅ Version: {ngen_j.__version__}')
     if python3 -c "
 import sys
 sys.path.insert(0, '.')
-from ngen_j.cli import main
+from ngen_japi.cli import main
 print('✅ CLI entry point found')
 " 2>/dev/null; then
         ((test_passed++))
@@ -385,7 +385,7 @@ sys.path.insert(0, '.')
 try:
     from ngen_j.cli import main
     import sys
-    sys.argv = ['ngen-j', '--help']
+    sys.argv = ['japi', '--help']
     main()
 except SystemExit as e:
     if e.code == 0:
@@ -408,12 +408,12 @@ except Exception as e:
     
     # Test 5: Check bundled scripts exist
     print_info "  Test 5: Check bundled scripts..."
-    scripts_dir="ngen_j/scripts"
+    scripts_dir="ngen_japi/scripts"
     if [ -d "$scripts_dir" ]; then
-        script_count=$(find "$scripts_dir" -name "ngen-j-*" -type f | wc -l)
+        script_count=$(find "$scripts_dir" -name "japi-*" -type f | wc -l)
         if [ $script_count -gt 0 ]; then
             print_info "    ✅ Found $script_count bundled script(s)"
-            find "$scripts_dir" -name "ngen-j-*" -type f -exec basename {} \; | while read script; do
+            find "$scripts_dir" -name "japi-*" -type f -exec basename {} \; | while read script; do
                 print_info "      - $script"
             done
             ((test_passed++))
@@ -437,8 +437,8 @@ import sys
 try:
     with zipfile.ZipFile('$wheel_file', 'r') as z:
         files = z.namelist()
-        # Check for both possible structures (ngen_j or ngen_j in wheel)
-        if any('ngen_j/__init__.py' in f or 'ngen_j/__init__.py' in f for f in files):
+        # Check for both possible structures (ngen_japi or ngen_japi in wheel)
+        if any('ngen_japi/__init__.py' in f or 'ngen_japi/__init__.py' in f for f in files):
             print('✅ Wheel contains package files')
             sys.exit(0)
         else:
@@ -530,7 +530,7 @@ publish_prod() {
         print_error "       b) Request ownership/access from current owner"
         print_error ""
         print_error "  3. Version already exists:"
-        print_error "     - Increment version number in pyproject.toml and ngen_j/__init__.py"
+        print_error "     - Increment version number in pyproject.toml and ngen_japi/__init__.py"
         print_error ""
         print_error "  4. Network/API issues:"
         print_error "     - Check internet connection"

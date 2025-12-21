@@ -1,6 +1,6 @@
-# Panduan Publish Package ngen ke PyPI
+# Panduan Publish Package japi ke PyPI
 
-Dokumen ini menjelaskan langkah-langkah untuk membangun dan mempublish package `ngen` ke PyPI (Python Package Index).
+Dokumen ini menjelaskan langkah-langkah untuk membangun dan mempublish package `ngen-japiapi` ke PyPI (Python Package Index).
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ Sebelum mempublish, pastikan Anda memiliki:
 
 2. **API Token PyPI** (Direkomendasikan)
    - Buat API token di https://pypi.org/manage/account/token/
-   - Pilih scope: "Entire account" atau "Specific project: ngen"
+   - Pilih scope: "Entire account" atau "Specific project: ngen-japi"
    - Simpan token dengan aman
 
 3. **Test PyPI Account** (Opsional, untuk testing)
@@ -173,14 +173,14 @@ Sebelum publish versi baru:
    version = "0.1.1"  # Increment version
    ```
 
-2. Update version di `ngen/__init__.py`:
+2. Update version di `ngen_japi/__init__.py`:
    ```python
    __version__ = "0.1.1"
    ```
 
 3. Commit perubahan:
    ```bash
-   git add pyproject.toml ngen/__init__.py
+   git add pyproject.toml ngen_japi/__init__.py
    git commit -m "Bump version to 0.1.1"
    git tag v0.1.1
    git push origin main --tags
@@ -189,16 +189,16 @@ Sebelum publish versi baru:
 ## Verifikasi setelah Publish
 
 1. **Cek di PyPI:**
-   - https://pypi.org/project/ngen/
+   - https://pypi.org/project/ngen_japi/
 
 2. **Test Install:**
    ```bash
-   pip install ngen
+   pip install ngen-japi
    ```
 
 3. **Test Command:**
    ```bash
-   ngen --help
+   japi --help
    ```
 
 ## Troubleshooting
@@ -237,7 +237,7 @@ Error ini terjadi ketika:
 
 2. **Request Access dari Owner Project**
    
-   - Kunjungi https://pypi.org/project/ngen/
+   - Kunjungi https://pypi.org/project/ngen_japi/
    - Cari contact owner project
    - Request access atau ownership transfer
    - Hanya cocok jika project tersebut inactive atau Anda adalah maintainer resmi
@@ -254,17 +254,17 @@ Error ini terjadi ketika:
 
 ```bash
 # Method 1: Using curl
-curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/ngen/json
+curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/ngen-japi_japi/json
 # Output 404 = nama tersedia
 # Output 200 = nama sudah digunakan
 
 # Method 2: Using Python
 python3 -c "
 import requests
-r = requests.get('https://pypi.org/pypi/ngen/json')
+r = requests.get('https://pypi.org/pypi/ngen-japi_japi/json')
 if r.status_code == 200:
     print('❌ Nama sudah digunakan')
-    print(f'Project URL: https://pypi.org/project/ngen/')
+    print(f'Project URL: https://pypi.org/project/ngen_japi/')
 else:
     print('✅ Nama tersedia')
 "
@@ -314,8 +314,8 @@ else:
 ## File yang Di-include
 
 Package akan include:
-- `ngen/` - Package source code
-- `ngen/scripts/` - Script-script wrapper (ngen-*)
+- `ngen_japi/` - Package source code
+- `ngen_japi/scripts/` - Script-script wrapper (ngen-*)
 - `README.md` - Documentation
 - `MANIFEST.in` - File manifest untuk non-Python files
 

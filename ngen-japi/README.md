@@ -1,16 +1,16 @@
-# ngen-j
+# ngen-japi
 
-[![GitHub](https://img.shields.io/badge/GitHub-mamatnurahmat%2Fngen-j-blue)](https://github.com/mamatnurahmat/ngen-j)
-[![PyPI](https://img.shields.io/pypi/v/ngen-j)](https://pypi.org/project/ngen-j/)
+[![GitHub](https://img.shields.io/badge/GitHub-mamatnurahmat%2Fngen--japi-blue)](https://github.com/mamatnurahmat/ngen-japi)
+[![PyPI](https://img.shields.io/pypi/v/ngen-japi)](https://pypi.org/project/ngen-japi/)
 
-Jenkins API management CLI tool that also supports executing scripts from `/usr/local/bin/ngen-j-*`.
+Jenkins API management CLI tool that also supports executing scripts from `/usr/local/bin/japi-*`.
 
 ## Installation
 
 Install from PyPI:
 
 ```bash
-pip install ngen-j
+pip install ngen-japi
 ```
 
 Or install from source:
@@ -21,7 +21,7 @@ pip install .
 
 ## Usage
 
-The `ngen-j` command provides:
+The `japi` command provides:
 - Jenkins API management commands
 - Script execution from bundled scripts
 
@@ -30,9 +30,9 @@ The `ngen-j` command provides:
 Check the version:
 
 ```bash
-ngen-j --version
+japi --version
 # or
-ngen-j -V
+japi -V
 ```
 
 ### Login
@@ -40,13 +40,13 @@ ngen-j -V
 Save Jenkins credentials for easy access:
 
 ```bash
-ngen-j login
+japi login
 ```
 
 The login command will:
 - Prompt for Jenkins URL
 - Ask for authentication method (username+token, username+password, or base64)
-- Save credentials to `~/.ngen-j/.env`
+- Save credentials to `~/.ngen-japi/.env`
 - Test the connection
 
 After login, you can use Jenkins commands without setting environment variables each time.
@@ -56,7 +56,7 @@ After login, you can use Jenkins commands without setting environment variables 
 Validate your Jenkins access and credentials:
 
 ```bash
-ngen-j check
+japi check
 ```
 
 The check command will:
@@ -67,26 +67,26 @@ The check command will:
 
 **Examples:**
 ```bash
-ngen-j login                    # Setup Jenkins credentials
-ngen-j check                    # Validate connection
-ngen-j --version               # Check version
-ngen-j jobs                     # List all jobs
-ngen-j job my-job               # Get job details
-ngen-j job --last-success       # Get last 10 successful jobs
-ngen-j job --last-failure       # Get last 10 failed jobs
-ngen-j build my-job             # Trigger build
-ngen-j build my-job --param REF_NAME=develop REF_TYPE=branch  # Build with parameters
-ngen-j build my-job --param=REF_NAME=develop --param=REF_TYPE=branch  # Alternative format
-ngen-j get-xml my-job           # Get job XML config
-ngen-j create my-job job.xml    # Create job from XML
-ngen-j create my-job job.xml --force  # Update existing job
-ngen-j delete my-job            # Delete job (with confirmation)
-ngen-j delete my-job --force    # Delete job without confirmation
-ngen-j plugin list              # List all installed plugins
-ngen-j plugin list --format json --output plugins.json  # Export to JSON
-ngen-j plugin list --format csv --output plugins.csv   # Export to CSV
-ngen-j plugin install git      # Install git plugin
-ngen-j plugin uninstall git    # Uninstall git plugin
+japi login                    # Setup Jenkins credentials
+japi check                    # Validate connection
+japi --version               # Check version
+japi jobs                     # List all jobs
+japi job my-job               # Get job details
+japi job --last-success       # Get last 10 successful jobs
+japi job --last-failure       # Get last 10 failed jobs
+japi build my-job             # Trigger build
+japi build my-job --param REF_NAME=develop REF_TYPE=branch  # Build with parameters
+japi build my-job --param=REF_NAME=develop --param=REF_TYPE=branch  # Alternative format
+japi get-xml my-job           # Get job XML config
+japi create my-job job.xml    # Create job from XML
+japi create my-job job.xml --force  # Update existing job
+japi delete my-job            # Delete job (with confirmation)
+japi delete my-job --force    # Delete job without confirmation
+japi plugin list              # List all installed plugins
+japi plugin list --format json --output plugins.json  # Export to JSON
+japi plugin list --format csv --output plugins.csv   # Export to CSV
+japi plugin install git      # Install git plugin
+japi plugin uninstall git    # Uninstall git plugin
 ```
 
 ### Jenkins API Management
@@ -114,27 +114,27 @@ export JENKINS_AUTH="base64-encoded-user:token"
 
 **List all jobs:**
 ```bash
-ngen-j jobs
+japi jobs
 ```
 
 **Get job details:**
 ```bash
-ngen-j job <job-name>
+japi job <job-name>
 ```
 
 **Get last 10 successful jobs:**
 ```bash
-ngen-j job --last-success
+japi job --last-success
 ```
 
 **Get last 10 failed jobs:**
 ```bash
-ngen-j job --last-failure
+japi job --last-failure
 ```
 
 **Trigger a build:**
 ```bash
-ngen-j build <job-name> [--param KEY=VALUE ...] or [--param=KEY=VALUE ...]
+japi build <job-name> [--param KEY=VALUE ...] or [--param=KEY=VALUE ...]
 ```
 
 Options:
@@ -143,25 +143,25 @@ Options:
 
 Examples:
 ```bash
-ngen-j build my-job
-ngen-j build my-job --param REF_NAME=develop REF_TYPE=branch
-ngen-j build my-job --param=REF_NAME=develop --param=REF_TYPE=branch
-ngen-j build my-job --param REF_NAME=develop --param=REF_TYPE=branch --param DEPLOY_ENV=staging
+japi build my-job
+japi build my-job --param REF_NAME=develop REF_TYPE=branch
+japi build my-job --param=REF_NAME=develop --param=REF_TYPE=branch
+japi build my-job --param REF_NAME=develop --param=REF_TYPE=branch --param DEPLOY_ENV=staging
 ```
 
 **Get build console output:**
 ```bash
-ngen-j log <job-name> <build-number>
+japi log <job-name> <build-number>
 ```
 
 **Get job XML configuration:**
 ```bash
-ngen-j get-xml <job-name>
+japi get-xml <job-name>
 ```
 
 **Create or update job from XML:**
 ```bash
-ngen-j create <job-name> <xml-file> [--force]
+japi create <job-name> <xml-file> [--force]
 ```
 
 Options:
@@ -169,7 +169,7 @@ Options:
 
 **Delete a job:**
 ```bash
-ngen-j delete <job-name> [--force]
+japi delete <job-name> [--force]
 ```
 
 Options:
@@ -179,7 +179,7 @@ Options:
 
 **List installed plugins:**
 ```bash
-ngen-j plugin list [--format json|csv] [--output <file>]
+japi plugin list [--format json|csv] [--output <file>]
 ```
 
 Options:
@@ -188,32 +188,32 @@ Options:
 
 Examples:
 ```bash
-ngen-j plugin list
-ngen-j plugin list --format json
-ngen-j plugin list --format json --output plugins.json
-ngen-j plugin list --format csv --output plugins.csv
+japi plugin list
+japi plugin list --format json
+japi plugin list --format json --output plugins.json
+japi plugin list --format csv --output plugins.csv
 ```
 
 **Install plugin(s):**
 ```bash
-ngen-j plugin install <plugin1> [plugin2] ...
+japi plugin install <plugin1> [plugin2] ...
 ```
 
 Examples:
 ```bash
-ngen-j plugin install git
-ngen-j plugin install git docker-workflow
+japi plugin install git
+japi plugin install git docker-workflow
 ```
 
 **Uninstall plugin(s):**
 ```bash
-ngen-j plugin uninstall <plugin1> [plugin2] ...
+japi plugin uninstall <plugin1> [plugin2] ...
 ```
 
 Examples:
 ```bash
-ngen-j plugin uninstall git
-ngen-j plugin uninstall git docker-workflow
+japi plugin uninstall git
+japi plugin uninstall git docker-workflow
 ```
 
 **Note:** Plugin operations require Jenkins permissions: Overall/Administer or Plugin/Install and Plugin/Uninstall
@@ -224,12 +224,12 @@ Manage Jenkins credentials stored in the global credentials store.
 
 **List all credentials:**
 ```bash
-ngen-j cred list
+japi cred list
 ```
 
 **Create a credential (interactive mode):**
 ```bash
-ngen-j cred create
+japi cred create
 ```
 
 The interactive mode will prompt you to:
@@ -240,7 +240,7 @@ The interactive mode will prompt you to:
 
 **Create a credential (non-interactive mode):**
 ```bash
-ngen-j cred create --type <type> --id <id> [options...]
+japi cred create --type <type> --id <id> [options...]
 ```
 
 Supported credential types:
@@ -273,24 +273,24 @@ Options for `ssh_key`:
 Examples:
 ```bash
 # Interactive mode
-ngen-j cred create
+japi cred create
 
 # Non-interactive: Username/Password
-ngen-j cred create --type username_password --id my-git-cred --username myuser --password mypass --description "Git credentials"
+japi cred create --type username_password --id my-git-cred --username myuser --password mypass --description "Git credentials"
 
 # Non-interactive: Secret Text
-ngen-j cred create --type secret_text --id my-token --secret "my-secret-token" --description "API token"
+japi cred create --type secret_text --id my-token --secret "my-secret-token" --description "API token"
 
 # Non-interactive: SSH Key
-ngen-j cred create --type ssh_key --id my-ssh-cred --username deploy --private-key-file ~/.ssh/id_rsa --description "Deployment SSH key"
+japi cred create --type ssh_key --id my-ssh-cred --username deploy --private-key-file ~/.ssh/id_rsa --description "Deployment SSH key"
 
 # Overwrite existing credential
-ngen-j cred create --type username_password --id my-cred --username newuser --password newpass --force
+japi cred create --type username_password --id my-cred --username newuser --password newpass --force
 ```
 
 **Delete a credential:**
 ```bash
-ngen-j cred delete <credential-id> [--force]
+japi cred delete <credential-id> [--force]
 ```
 
 Options:
@@ -298,9 +298,23 @@ Options:
 
 Examples:
 ```bash
-ngen-j cred delete my-cred
-ngen-j cred delete my-cred --force
+japi cred delete my-cred
+japi cred delete my-cred --force
 ```
+
+**Backup all credentials:**
+```bash
+japi cred backup [--file backup.json]
+```
+
+**Restore credentials from backup:**
+```bash
+japi cred restore [--file backup.json] [--force]
+```
+
+Options:
+- `--file <file>` - Path to the backup JSON file (default: jenkins_credentials_backup.json)
+- `--force` - Overwrite existing credentials with the same ID during restore
 
 **Note:** Credential operations require Jenkins permissions: Credentials/View, Credentials/Create, Credentials/Delete, or Overall/Administer
 
@@ -309,17 +323,17 @@ ngen-j cred delete my-cred --force
 If you have a bundled script, you can execute it directly:
 
 ```bash
-ngen-j rancher --help
-ngen-j rancher version
+japi rancher --help
+japi rancher version
 ```
 
 The CLI will look for scripts in the bundled scripts directory.
 
 ## How It Works
 
-1. When you run `ngen-j {command}`, the CLI dispatcher checks in this order:
+1. When you run `japi {command}`, the CLI dispatcher checks in this order:
    - **Built-in commands**: Jenkins management commands
-   - **Scripts**: Looks for a script at `/usr/local/bin/ngen-j-{command}` or bundled scripts
+   - **Scripts**: Looks for a script at `/usr/local/bin/japi-{command}` or bundled scripts
 2. If found, it executes the command with any additional arguments passed
 3. Scripts can be any executable file (bash, sh, Python, or binary)
 
@@ -327,9 +341,9 @@ The CLI will look for scripts in the bundled scripts directory.
 
 ### Scripts
 
-1. Place a script in the `ngen_j/scripts/` directory with name `ngen-j-{your-command}`
-2. Make sure it's executable: `chmod +x ngen_j/scripts/ngen-j-{your-command}`
-3. Use it with: `ngen-j {your-command}`
+1. Place a script in the `ngen_japi/scripts/` directory with name `japi-{your-command}`
+2. Make sure it's executable: `chmod +x ngen_japi/scripts/japi-{your-command}`
+3. Use it with: `japi {your-command}`
 
 ## Development
 
@@ -360,8 +374,8 @@ Untuk panduan lengkap, lihat [PUBLISH.md](PUBLISH.md).
 
 ## Repository
 
-- **GitHub**: https://github.com/mamatnurahmat/ngen-j
-- **PyPI**: https://pypi.org/project/ngen-j/
+- **GitHub**: https://github.com/mamatnurahmat/ngen-japi
+- **PyPI**: https://pypi.org/project/ngen-japi/
 
 ## License
 
