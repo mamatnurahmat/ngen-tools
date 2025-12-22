@@ -18,7 +18,7 @@ from .config import (
     create_default_arg_json,
     ensure_config_dir
 )
-from .builder import execute_build, BuildxError
+from .builder import execute_build, BuildxError, get_git_info
 
 
 def cmd_build(args):
@@ -26,6 +26,26 @@ def cmd_build(args):
     try:
         # Determine if remote build
         remote = not args.local
+        
+        # Get repo and ref - auto-detect from git if in local mode and not provided
+        repo = args.repo
+        ref = args.ref
+        
+        if args.local and (not repo or not ref):
+            print("🔍 Detecting git repository info...")
+            git_info = get_git_info()
+            if not repo:
+                repo = git_info["repo"]
+            if not ref:
+                ref = git_info["ref"]
+            print(f"   Repository: {repo}")
+            print(f"   Reference: {ref}")
+        
+        # Validate required args for remote build
+        if not args.local and (not repo or not ref):
+            print("❌ Error: repo and ref are required for remote builds", file=sys.stderr)
+            print("   Use --local flag to build from current directory", file=sys.stderr)
+            sys.exit(1)
         
         # Determine cicd path for local builds
         cicd_path = None
@@ -42,8 +62,8 @@ def cmd_build(args):
                 extra_build_args.extend(["--build-arg", arg])
         
         result = execute_build(
-            repo=args.repo,
-            ref=args.ref,
+            repo=repo,
+            ref=ref,
             context_path=args.context if args.local else None,
             dockerfile=args.dockerfile,
             tag=args.tag,
@@ -193,12 +213,13 @@ Examples:
   buildx saas-apigateway develop
   buildx saas-apigateway develop --dry-run
   
-  # Build from local directory (assumes cicd/cicd.json exists)
-  buildx myrepo main --local
-  buildx myrepo main --local --context ./src
+  # Build from local directory (auto-detects repo and branch from git)
+  buildx --local                             # Auto-detect repo and ref
+  buildx --local --dry-run                   # Preview build command
+  buildx myrepo main --local                 # Explicit repo and ref
   
   # Build with custom cicd.json path
-  buildx myrepo main --local --cicd config/cicd.json
+  buildx --local --cicd config/cicd.json
   
   # Build with custom options
   buildx myrepo main --platform linux/amd64,linux/arm64
@@ -258,7 +279,8 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-buildx
         return
     
     # Handle build (default)
-    if not args.repo or not args.ref:
+    # For --local mode, repo and ref are optional (auto-detected from git)
+    if not args.local and (not args.repo or not args.ref):
         parser.print_help()
         sys.exit(1)
     

@@ -97,6 +97,77 @@ def send_teams_notification(
         return False
 
 
+def get_git_info() -> Dict[str, str]:
+    """Get current git repository info (repo name and branch/ref).
+    
+    Returns:
+        dict: Dictionary with 'repo' and 'ref' keys
+    
+    Raises:
+        BuildxError: If not in a git repository or git command fails
+    """
+    # Get current branch or tag
+    try:
+        # Try to get current branch
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        ref = result.stdout.strip()
+        
+        # If HEAD (detached), try to get tag name
+        if ref == "HEAD":
+            result = subprocess.run(
+                ["git", "describe", "--tags", "--exact-match"],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            if result.returncode == 0:
+                ref = result.stdout.strip()
+            else:
+                # Fallback to short commit hash
+                result = subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                ref = result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        raise BuildxError(f"Not in a git repository or git command failed: {e.stderr}")
+    
+    # Get repository name from remote URL
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        remote_url = result.stdout.strip()
+        
+        # Extract repo name from URL
+        # Supports: https://bitbucket.org/org/repo.git or git@bitbucket.org:org/repo.git
+        if remote_url.endswith('.git'):
+            remote_url = remote_url[:-4]
+        
+        # Get last part of URL as repo name
+        repo = remote_url.split('/')[-1]
+        
+    except subprocess.CalledProcessError:
+        # Fallback: use current directory name
+        import os
+        repo = os.path.basename(os.getcwd())
+    
+    return {
+        "repo": repo,
+        "ref": ref
+    }
+
+
 def fetch_cicd_config(repo: str, ref: str, org: Optional[str] = None) -> Dict[str, Any]:
     """Fetch cicd/cicd.json from repository using gitops get-file.
     

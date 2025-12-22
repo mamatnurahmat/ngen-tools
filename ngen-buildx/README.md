@@ -113,19 +113,24 @@ buildx saas-apigateway develop --dry-run
 buildx myrepo v1.0.0
 ```
 
+
 ### Local Build
 
-Build from local source directory:
+Build from local source directory (auto-detects repo and branch from git):
 
 ```bash
-# Build from current directory (uses cicd/cicd.json)
+# Auto-detect repo and branch from current git directory
+buildx --local
+buildx --local --dry-run
+
+# Explicit repo and ref
 buildx myrepo develop --local
+
+# Build with custom cicd.json path
+buildx --local --cicd config/cicd.json
 
 # Build with custom context
 buildx myrepo develop --local --context ./src
-
-# Build with custom cicd.json path
-buildx myrepo develop --local --cicd config/cicd.json
 
 # Local build with push
 buildx myrepo v1.0.0 --local --tag myregistry/myapp:v1.0.0 --push
