@@ -27,6 +27,14 @@ def cmd_build(args):
         # Determine if remote build
         remote = not args.local
         
+        # Determine cicd path for local builds
+        cicd_path = None
+        if args.cicd:
+            cicd_path = args.cicd
+        elif args.local:
+            # Default local path when using --local
+            cicd_path = "cicd/cicd.json"
+        
         # Parse extra build args from CLI
         extra_build_args = []
         if args.build_arg:
@@ -44,6 +52,8 @@ def cmd_build(args):
             org=args.org,
             dry_run=args.dry_run,
             remote=remote,
+            rebuild=args.rebuild,
+            cicd_path=cicd_path,
             extra_args=extra_build_args if extra_build_args else None
         )
         
@@ -55,12 +65,22 @@ def cmd_build(args):
                 print(f"{'=' * 60}")
                 print(result['command'])
                 print(f"{'=' * 60}")
+                if result.get('image_tag'):
+                    print(f"\n🏷️  Image tag: {result['image_tag']}")
+                    if result.get('image_exists'):
+                        print(f"   ⚠️  Image already exists in registry")
+                    else:
+                        print(f"   ✅ Image does not exist, will be built")
                 print(f"\nℹ️  {result['message']}")
                 print(f"\n📋 CICD Config from repository:")
                 for key, value in result.get('cicd_config', {}).items():
                     print(f"   {key}: {value}")
+            elif result.get('skipped'):
+                print(f"\n⏭️  {result['message']}")
             elif result['success']:
                 print(f"\n✅ {result['message']}")
+                if result.get('image_tag'):
+                    print(f"   🏷️  Image: {result['image_tag']}")
             else:
                 print(f"\n❌ {result['message']}", file=sys.stderr)
         
@@ -173,12 +193,16 @@ Examples:
   buildx saas-apigateway develop
   buildx saas-apigateway develop --dry-run
   
-  # Build from local directory
+  # Build from local directory (assumes cicd/cicd.json exists)
+  buildx myrepo main --local
   buildx myrepo main --local --context ./src
-  buildx myrepo v1.0.0 --local --tag myregistry/myapp:v1.0.0
+  
+  # Build with custom cicd.json path
+  buildx myrepo main --local --cicd config/cicd.json
   
   # Build with custom options
   buildx myrepo main --platform linux/amd64,linux/arm64
+  buildx myrepo v1.0.0 --local --tag myregistry/myapp:v1.0.0 --push
   
   # Configuration
   buildx --config                # Show current configuration
@@ -206,6 +230,9 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-buildx
     
     # Build options
     parser.add_argument('--local', action='store_true', help='Build from local context instead of remote repo')
+    parser.add_argument('--rebuild', action='store_true', help='Force rebuild even if image exists')
+    parser.add_argument('--cicd', metavar='PATH', 
+                        help='Path to local cicd.json (default: cicd/cicd.json when using --local)')
     parser.add_argument('--context', default='.', help='Build context path for local builds (default: .)')
     parser.add_argument('--dockerfile', '-f', default='Dockerfile', help='Dockerfile path (default: Dockerfile)')
     parser.add_argument('--tag', '-t', help='Image tag (default: from cicd.json)')

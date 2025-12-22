@@ -4,14 +4,18 @@ Docker Buildx CLI wrapper with GitOps integration.
 
 ## Overview
 
-`ngen-buildx` is a CLI tool that simplifies Docker image building using `docker buildx`. It integrates with `ngen-gitops` to automatically fetch CI/CD configuration from repositories.
+`ngen-buildx` is a CLI tool that simplifies Docker image building using `docker buildx`. It integrates with `ngen-gitops` to automatically fetch CI/CD configuration from repositories and supports both remote and local builds.
 
 ## Features
 
-- 🚀 **GitOps Integration**: Fetches `cicd/cicd.json` from repositories using `gitops get-file`
-- 🔧 **Configurable Build Args**: Template-based build arguments with variable substitution
+- 🚀 **Remote Build**: Build directly from remote Git repositories (default)
+- 📁 **Local Build**: Build from local source directory with `--local` flag
+- 🔧 **GitOps Integration**: Fetches `cicd/cicd.json` from repositories using `gitops get-file`
 - 📦 **Resource Management**: Configurable memory and CPU limits for builds
 - 🏗️ **Multi-platform Support**: Build for multiple architectures
+- 🔄 **Smart Image Check**: Skip build if image already exists (use `--rebuild` to force)
+- 📣 **Teams Notification**: Send build notifications to Microsoft Teams
+- 🏷️ **Smart Tagging**: Uses commit ID for branches, tag name for version tags
 
 ## Installation
 
@@ -23,12 +27,13 @@ pip install ngen-buildx
 
 - Docker with buildx plugin installed
 - `ngen-gitops` installed and configured with Bitbucket credentials
+- `~/.netrc` configured with Bitbucket credentials (for remote builds)
 
 ## Quick Start
 
 1. **Initialize configuration:**
    ```bash
-   buildx init
+   buildx --init
    ```
 
 2. **Edit configuration files:**
@@ -39,7 +44,11 @@ pip install ngen-buildx
 
 3. **Build an image:**
    ```bash
-   buildx build saas-apigateway develop
+   # Remote build (from Git repository)
+   buildx saas-apigateway develop
+   
+   # Local build (from current directory)
+   buildx myproject develop --local
    ```
 
 ## Configuration
@@ -48,13 +57,19 @@ pip install ngen-buildx
 
 ```bash
 # Builder Configuration
-BUILDER_NAME=mybuilder
+BUILDER_NAME=container-builder
 DEFAULT_MEMORY=4g
 DEFAULT_CPU_PERIOD=100000
 DEFAULT_CPU_QUOTA=200000
 
 # Registry Configuration
-REGISTRY01_URL=registry.example.com
+REGISTRY01_URL=myregistry
+
+# GitOps Settings
+BITBUCKET_ORG=myorg
+
+# Notifications (Microsoft Teams)
+TEAMS_WEBHOOK=https://your-org.webhook.office.com/webhookb2/...
 ```
 
 ### Build Arguments (`~/.ngen-buildx/arg.json`)
@@ -84,60 +99,91 @@ REGISTRY01_URL=registry.example.com
 
 ## Usage
 
-### Build Command
+### Remote Build (Default)
+
+Build directly from remote Git repository:
 
 ```bash
 # Basic build
-buildx build <repo> <ref>
+buildx <repo> <ref>
 
 # Examples
-buildx build saas-apigateway develop
-buildx build saas-apigateway develop --dry-run
-buildx build saas-apigateway develop --push
-buildx build myrepo main --tag myregistry/myapp:v1.0.0
-buildx build myrepo main --platform linux/amd64,linux/arm64
+buildx saas-apigateway develop
+buildx saas-apigateway develop --dry-run
+buildx myrepo v1.0.0
 ```
 
-### Options
+### Local Build
+
+Build from local source directory:
+
+```bash
+# Build from current directory (uses cicd/cicd.json)
+buildx myrepo develop --local
+
+# Build with custom context
+buildx myrepo develop --local --context ./src
+
+# Build with custom cicd.json path
+buildx myrepo develop --local --cicd config/cicd.json
+
+# Local build with push
+buildx myrepo v1.0.0 --local --tag myregistry/myapp:v1.0.0 --push
+```
+
+### Build Options
 
 | Option | Description |
 |--------|-------------|
-| `--context` | Build context path (default: `.`) |
+| `--local` | Build from local directory instead of remote repo |
+| `--rebuild` | Force rebuild even if image already exists |
+| `--cicd PATH` | Path to local cicd.json (default: `cicd/cicd.json`) |
+| `--context PATH` | Build context path (default: `.`) |
 | `--dockerfile`, `-f` | Dockerfile path (default: `Dockerfile`) |
-| `--tag`, `-t` | Image tag |
-| `--push` | Push image after build |
-| `--platform` | Target platform(s) |
+| `--tag`, `-t` | Image tag (default: from cicd.json) |
+| `--push` | Push image after build (default for remote builds) |
+| `--platform` | Target platform(s) (e.g., `linux/amd64,linux/arm64`) |
 | `--org` | Organization name |
+| `--build-arg KEY=VALUE` | Set build argument (can be used multiple times) |
 | `--dry-run` | Show command without executing |
 | `--json` | Output as JSON |
 
-### Configuration Command
+### Configuration Commands
 
 ```bash
 # Show configuration
-buildx config
+buildx --config
 
 # Show as JSON
-buildx config --json
+buildx --config --json
 ```
 
 ### Initialize Command
 
 ```bash
 # Create config files
-buildx init
+buildx --init
 
 # Recreate config files
-buildx init --force
+buildx --init --force
 ```
+
+## Image Tagging
+
+The tool uses smart tagging based on the reference type:
+
+| Reference Type | Tag Format |
+|----------------|------------|
+| Branch (`develop`, `main`) | 6-char commit ID (e.g., `2195e0`) |
+| Version tag (`v1.0.0`, `1.2.3`) | Tag name (e.g., `v1.0.0`) |
 
 ## Generated Build Command
 
-The tool generates a command like:
+For remote builds, the tool generates a command like:
 
 ```bash
 docker buildx build \
-  --builder mybuilder \
+  --builder container-builder \
   --sbom=true \
   --no-cache \
   --attest type=provenance,mode=max \
@@ -145,14 +191,25 @@ docker buildx build \
   --cpu-period 100000 \
   --cpu-quota 200000 \
   --progress=plain \
-  --build-arg REGISTRY01=registry.example.com \
+  --build-arg REGISTRY01=myregistry \
   --build-arg BRANCH=develop \
   --build-arg PROJECT=saas-apigateway \
   --build-arg PORT=8005 \
-  --build-arg PORT2=8080 \
-  -f Dockerfile \
-  .
+  -t myregistry/saas-apigateway:2195e0 \
+  --push \
+  https://***:***@bitbucket.org/myorg/saas-apigateway.git#develop
 ```
+
+## Teams Notification
+
+When `TEAMS_WEBHOOK` is configured in `.env`, build notifications are sent to Microsoft Teams:
+
+- ✅ Success notification with image details
+- ❌ Failure notification with error info
+
+## Related Tools
+
+- [ngen-gitops](https://pypi.org/project/ngen-gitops/) - GitOps CLI for repository management
 
 ## License
 

@@ -33,6 +33,9 @@ REGISTRY01_URL=registry.example.com
 
 # GitOps Settings (optional, uses ngen-gitops defaults if not set)
 # BITBUCKET_ORG=loyaltoid
+
+# Notifications (Microsoft Teams)
+# TEAMS_WEBHOOK=https://your-org.webhook.office.com/webhookb2/...
 """
     with open(ENV_FILE, 'w') as f:
         f.write(default_content)
@@ -92,6 +95,9 @@ def load_config() -> Dict[str, Any]:
         },
         "gitops": {
             "org": os.getenv("BITBUCKET_ORG", "loyaltoid"),
+        },
+        "notifications": {
+            "teams_webhook": os.getenv("TEAMS_WEBHOOK", ""),
         }
     }
     
@@ -164,3 +170,15 @@ def get_registry_config() -> Dict[str, str]:
     """
     config = load_config()
     return config.get('registry', {})
+
+
+def get_teams_webhook() -> Optional[str]:
+    """Get Teams webhook URL.
+    
+    Returns:
+        Optional[str]: Teams webhook URL if configured, None otherwise
+    """
+    config = load_config()
+    webhook = config.get('notifications', {}).get('teams_webhook', '')
+    return webhook if webhook else None
+
