@@ -263,6 +263,27 @@ def get_short_commit_id(repo: str, ref: str, org: Optional[str] = None) -> str:
         return ref
 
 
+def get_local_short_commit_id() -> str:
+    """Get short commit ID (6 characters) from local git repository.
+    
+    Returns:
+        str: 6-character short commit ID
+    
+    Raises:
+        BuildxError: If not in a git repository
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short=6", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        raise BuildxError(f"Failed to get local commit ID: {e.stderr}")
+
+
 def is_tag_ref(ref: str) -> bool:
     """Check if ref looks like a version tag (e.g., v1.0.0, 1.2.3).
     
@@ -479,8 +500,11 @@ def build_docker_command(
         # Determine image tag: use commit ID for branches, keep tag name for version tags
         if is_tag_ref(ref):
             image_tag = ref
+        elif cicd_path:
+            # Local build: use local git commit ID
+            image_tag = get_local_short_commit_id()
         else:
-            # Get short commit ID (6 characters) for branch builds
+            # Remote build: get commit ID from remote repo
             image_tag = get_short_commit_id(repo, ref, org)
         
         if registry_url:

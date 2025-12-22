@@ -9,13 +9,13 @@ Docker Buildx CLI wrapper with GitOps integration.
 ## Features
 
 - 🚀 **Remote Build**: Build directly from remote Git repositories (default)
-- 📁 **Local Build**: Build from local source directory with `--local` flag
+- 📁 **Local Build**: Build from local source directory with `--local` flag (auto-detects repo and branch)
 - 🔧 **GitOps Integration**: Fetches `cicd/cicd.json` from repositories using `gitops get-file`
 - 📦 **Resource Management**: Configurable memory and CPU limits for builds
 - 🏗️ **Multi-platform Support**: Build for multiple architectures
 - 🔄 **Smart Image Check**: Skip build if image already exists (use `--rebuild` to force)
 - 📣 **Teams Notification**: Send build notifications to Microsoft Teams
-- 🏷️ **Smart Tagging**: Uses commit ID for branches, tag name for version tags
+- 🏷️ **Smart Tagging**: Uses local/remote commit ID for branches, tag name for version tags
 
 ## Installation
 
@@ -28,6 +28,23 @@ pip install ngen-buildx
 - Docker with buildx plugin installed
 - `ngen-gitops` installed and configured with Bitbucket credentials
 - `~/.netrc` configured with Bitbucket credentials (for remote builds)
+
+### Create Docker Buildx Builder
+
+Before using `ngen-buildx`, you need to create a Docker Buildx builder instance:
+
+```bash
+# Create a new builder (replace 'container-builder' with your preferred name)
+docker buildx create --name container-builder --driver docker-container --use
+
+# Verify the builder is active
+docker buildx ls
+
+# Bootstrap the builder (optional, but recommended)
+docker buildx inspect --bootstrap
+```
+
+> **Note**: Make sure the builder name matches `BUILDER_NAME` in your `~/.ngen-buildx/.env` configuration.
 
 ## Quick Start
 
@@ -47,8 +64,9 @@ pip install ngen-buildx
    # Remote build (from Git repository)
    buildx saas-apigateway develop
    
-   # Local build (from current directory)
-   buildx myproject develop --local
+   # Local build (from current directory, auto-detects repo and branch)
+   cd /path/to/project
+   buildx --local
    ```
 
 ## Configuration
@@ -113,13 +131,13 @@ buildx saas-apigateway develop --dry-run
 buildx myrepo v1.0.0
 ```
 
-
 ### Local Build
 
 Build from local source directory (auto-detects repo and branch from git):
 
 ```bash
 # Auto-detect repo and branch from current git directory
+cd /path/to/project
 buildx --local
 buildx --local --dry-run
 
@@ -133,7 +151,7 @@ buildx --local --cicd config/cicd.json
 buildx myrepo develop --local --context ./src
 
 # Local build with push
-buildx myrepo v1.0.0 --local --tag myregistry/myapp:v1.0.0 --push
+buildx --local --push
 ```
 
 ### Build Options
@@ -175,16 +193,21 @@ buildx --init --force
 
 ## Image Tagging
 
-The tool uses smart tagging based on the reference type:
+The tool uses smart tagging based on the build mode and reference type:
 
-| Reference Type | Tag Format |
-|----------------|------------|
-| Branch (`develop`, `main`) | 6-char commit ID (e.g., `2195e0`) |
-| Version tag (`v1.0.0`, `1.2.3`) | Tag name (e.g., `v1.0.0`) |
+| Build Mode | Reference Type | Tag Source |
+|------------|----------------|------------|
+| Remote | Branch (`develop`, `main`) | Commit ID from remote repo |
+| Local | Branch (`develop`, `main`) | Commit ID from local git |
+| Any | Version tag (`v1.0.0`) | Tag name as-is |
+
+Example tags:
+- Branch build: `myregistry/app:f51df9` (6-char commit ID)
+- Tag build: `myregistry/app:v1.0.0` (tag name)
 
 ## Generated Build Command
 
-For remote builds, the tool generates a command like:
+### Remote Build
 
 ```bash
 docker buildx build \
@@ -205,12 +228,53 @@ docker buildx build \
   https://***:***@bitbucket.org/myorg/saas-apigateway.git#develop
 ```
 
+### Local Build
+
+```bash
+docker buildx build \
+  --builder container-builder \
+  --sbom=true \
+  --no-cache \
+  --attest type=provenance,mode=max \
+  --memory 4g \
+  --cpu-period 100000 \
+  --cpu-quota 200000 \
+  --progress=plain \
+  --build-arg REGISTRY01=myregistry \
+  --build-arg BRANCH=master \
+  --build-arg PROJECT=myapp \
+  --build-arg PORT=8080 \
+  -t myregistry/myapp:f51df9 \
+  -f Dockerfile .
+```
+
 ## Teams Notification
 
 When `TEAMS_WEBHOOK` is configured in `.env`, build notifications are sent to Microsoft Teams:
 
 - ✅ Success notification with image details
 - ❌ Failure notification with error info
+
+## Troubleshooting
+
+### Builder not found
+
+If you get "no builder 'mybuilder' found" error:
+
+```bash
+# Create the builder
+docker buildx create --name mybuilder --driver docker-container --use
+```
+
+### Authentication issues for remote builds
+
+Ensure `~/.netrc` is configured:
+
+```
+machine bitbucket.org
+  login your-username
+  password your-app-password
+```
 
 ## Related Tools
 
