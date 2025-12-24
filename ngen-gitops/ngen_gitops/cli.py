@@ -41,6 +41,7 @@ from .git_wrapper import (
     git_get_file,
     GitError
 )
+from .teams_notify import notify_commit_info
 
 
 def cmd_create_branch(args):
@@ -525,26 +526,80 @@ def cmd_logs(args):
             # Credentials not configured, continue without auth
             pass
         
-        # If --last is specified, set max_count to 1
-        max_count = 1 if args.last else args.max_count
+        # If --last or --notif is specified, set max_count to 1
+        max_count = 1 if (args.last or args.notif) else args.max_count
         
-        result = git_log(
-            repo=args.repo,
-            ref=args.ref,
-            max_count=max_count,
-            commit_id=args.detail,
-            org=args.org,
-            remote=args.remote,
-            username=username,
-            app_password=app_password,
-            json_format=args.json,
-            short_hash=args.version
-        )
+        # Force JSON format internally when using --notif for easier parsing
+        internal_json = args.json or args.notif
+        
+        if args.notif and not args.detail:
+            # If notifying but no specific commit ID, we need to find the latest hash first
+            # to get full details (stats) which git_log only provides with commit_id
+            latest_result = git_log(
+                repo=args.repo,
+                ref=args.ref,
+                max_count=1,
+                json_format=True,
+                org=args.org,
+                remote=args.remote,
+                username=username,
+                app_password=app_password
+            )
+            
+            if latest_result.get('success') and latest_result.get('commits'):
+                # Get hash of latest commit
+                commit_hash = latest_result['commits'][0]['hash']
+                
+                # Fetch detailed info for this commit
+                result = git_log(
+                    repo=args.repo,
+                    ref=args.ref,
+                    commit_id=commit_hash,
+                    json_format=True,
+                    org=args.org,
+                    remote=args.remote,
+                    username=username,
+                    app_password=app_password
+                )
+            else:
+                # Fallback if lookup failed (shouldn't happen if repo exists)
+                result = latest_result
+        else:
+            # Standard lookup or specific detail lookup
+            result = git_log(
+                repo=args.repo,
+                ref=args.ref,
+                max_count=max_count,
+                commit_id=args.detail,
+                org=args.org,
+                remote=args.remote,
+                username=username,
+                app_password=app_password,
+                json_format=internal_json,
+                short_hash=args.version
+            )
+        
+        # Handle Teams notification if --notif flag is set
+        if args.notif:
+            commits = result.get('commits', [])
+            # If detailed lookup, commit might be in 'commit' dict not 'commits' list
+            if 'commit' in result and not commits:
+                commits = [result['commit']]
+                
+            webhook_url = getattr(args, 'teams_webhook', None)
+            notify_commit_info(
+                service=args.repo,
+                ref=args.ref,
+                commits=commits,
+                output=result.get('output', ''),  # Pass raw output
+                success=result.get('success', False),
+                webhook_url=webhook_url
+            )
         
         if args.json:
             # Output as JSON
             print(json.dumps(result, indent=2))
-        else:
+        elif not args.notif:  # Only print normal output if not just sending notification
             # Output as text
             if args.version:
                 # Just print the hash
@@ -931,6 +986,9 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-gitops
     parser_logs.add_argument('--last', action='store_true', help='Show only the last commit')
     parser_logs.add_argument('--version', action='store_true', help='Show only the short commit hash of the last commit')
     parser_logs.add_argument('--json', action='store_true', help='Output as JSON')
+    parser_logs.add_argument('--notif', action='store_true', help='Send notification to Microsoft Teams')
+    parser_logs.add_argument('--teams-webhook', dest='teams_webhook', metavar='URL', 
+                            help='Teams webhook URL (overrides TEAMS_WEBHOOK from ~/.ngen-gitops/.env)')
     parser_logs.add_argument('--org', help='Organization name (defaults to config)')
     parser_logs.add_argument('--remote', help='Remote type: bitbucket.org, github.com, gitlab.com (defaults to config)')
     parser_logs.set_defaults(func=cmd_logs)
