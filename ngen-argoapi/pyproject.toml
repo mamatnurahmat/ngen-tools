@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ngen-argoapi"
+version = "0.1.4"
+description = "ArgoCD API management CLI and wrapper package"
+readme = "README.md"
+requires-python = ">=3.7"
+license = "MIT"
+authors = [
+    {name = "ngen-argoapi contributors"}
+]
+keywords = ["cli", "wrapper", "command", "argocd", "api", "gitops"]
+dependencies = [
+    "httpx>=0.23.0",
+    "python-dotenv>=0.20.0",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+[project.scripts]
+argoapi = "ngen_argoapi.cli:main"
+ngen-argoapi = "ngen_argoapi.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mamatnurahmat/ngen-argoapi"
+Repository = "https://github.com/mamatnurahmat/ngen-argoapi"
+Issues = "https://github.com/mamatnurahmat/ngen-argoapi/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-dir]
+"" = "."
+ngen_argoapi = "ngen_argoapi"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ngen_argoapi*"]
