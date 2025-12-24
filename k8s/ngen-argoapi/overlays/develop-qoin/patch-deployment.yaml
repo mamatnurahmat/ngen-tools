@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argoapi
+spec:
+  template:
+    spec:
+      containers:
+        - name: argoapi
+          env:
+            - name: ARGOCD_URL
+              value: "https://193.2.2.200"
+            - name: ARGOCD_USER
+              value: "admin"
+            - name: ARGOCD_PASSWORD
+              value: "argoqoin"

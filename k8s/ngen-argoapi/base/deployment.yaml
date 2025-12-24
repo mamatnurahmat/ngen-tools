@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argoapi
+  labels:
+    app: argoapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: argoapi
+  template:
+    metadata:
+      labels:
+        app: argoapi
+    spec:
+      containers:
+        - name: argoapi
+          image: python:3.11-slim
+          ports:
+            - containerPort: 8899
+              protocol: TCP
+          command:
+            - /bin/bash
+            - -c
+            - |
+              pip install ngen-argoapi==0.1.8 && \
+              argoapi login --url $ARGOCD_URL --user $ARGOCD_USER --password $ARGOCD_PASSWORD && \
+              argoapi server
+          env:
+            - name: ARGOCD_URL
+              value: "https://argocd.example.com"
+            - name: ARGOCD_USER
+              value: "admin"
+            - name: ARGOCD_PASSWORD
+              value: "password"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"

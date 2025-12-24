@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namePrefix: argocd-production-ue-
+
+namespace: default
+
+commonLabels:
+  app: argocd-production-ue
+
+patches:
+  - path: patch-deployment.yaml
