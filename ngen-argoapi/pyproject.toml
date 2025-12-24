@@ -16,6 +16,8 @@ keywords = ["cli", "wrapper", "command", "argocd", "api", "gitops"]
 dependencies = [
     "httpx>=0.23.0",
     "python-dotenv>=0.20.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
