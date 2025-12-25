@@ -9,10 +9,13 @@ spec:
         - name: argoapi
           env:
             - name: ARGOAPI_VERSION
-              value: "0.1.10"
+              value: "0.1.11"
+            - name: ROOT_PATH
+              value: "/api/v1/namespaces/default/services/http:argocd-develop-qoin-argoapi:8899/proxy"
             - name: ARGOCD_URL
               value: "https://193.2.2.200"
             - name: ARGOCD_USER
               value: "admin"
             - name: ARGOCD_PASSWORD
               value: "argoqoin"
+
