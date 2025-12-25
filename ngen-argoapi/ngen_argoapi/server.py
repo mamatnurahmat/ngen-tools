@@ -110,6 +110,31 @@ async def version_info():
         "pypi_url": "https://pypi.org/project/ngen-argoapi/"
     }
 
+@app.get("/oos", tags=["Applications"])
+async def out_of_sync_apps():
+    """
+    Get all applications that are Out of Sync with their diffs.
+    
+    Returns list of apps with:
+    - name: Application name
+    - syncStatus: Sync status (OutOfSync)
+    - healthStatus: Health status
+    - resources: List of out-of-sync resources with diffs
+    - count: Total number of out-of-sync apps
+    """
+    try:
+        client = get_client()
+        apps = client.get_out_of_sync_apps()
+        
+        return {
+            "count": len(apps),
+            "applications": apps
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/health", tags=["Health"])
 async def health_check():
     """

@@ -425,6 +425,75 @@ def handle_detail_command(args: list) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+def handle_oos_command(args: list) -> int:
+    """
+    Handle oos command to show all Out of Sync applications with diffs.
+    Usage: argoapi oos
+    """
+    if args and args[0] in ("-h", "--help"):
+        print("Usage: argoapi oos [OPTIONS]", file=sys.stderr)
+        print("\nShow all Out of Sync applications with their diffs.", file=sys.stderr)
+        print("\nOptions:", file=sys.stderr)
+        print("  --json    Output as JSON", file=sys.stderr)
+        print("\nExamples:", file=sys.stderr)
+        print("  argoapi oos", file=sys.stderr)
+        print("  argoapi oos --json", file=sys.stderr)
+        return 0
+
+    json_output = "--json" in args
+    
+    try:
+        client = ArgocdClient()
+        oos_apps = client.get_out_of_sync_apps()
+        
+        if json_output:
+            import json
+            print(json.dumps({"count": len(oos_apps), "applications": oos_apps}, indent=2))
+        else:
+            if not oos_apps:
+                print("✅ All applications are in sync!")
+                return 0
+            
+            print(f"Found {len(oos_apps)} Out of Sync application(s):")
+            print("=" * 80)
+            
+            for app in oos_apps:
+                print(f"\n📦 Application: {app['name']}")
+                print(f"   Health: {app['healthStatus']}")
+                print(f"   Out of Sync Resources: {len(app['resources'])}")
+                
+                for res in app['resources']:
+                    print(f"\n   ├─ {res['kind']}/{res['name']}")
+                    if res.get('namespace'):
+                        print(f"   │  Namespace: {res['namespace']}")
+                    
+                    diff = res.get('diff', '')
+                    if diff and diff != "(Unable to fetch diff)":
+                        print("   │  Diff:")
+                        for line in diff.split('\n')[:20]:  # Limit to 20 lines
+                            if line.startswith('+'):
+                                print(f"   │  \033[92m{line}\033[0m")
+                            elif line.startswith('-'):
+                                print(f"   │  \033[91m{line}\033[0m")
+                            elif line.startswith('@@'):
+                                print(f"   │  \033[36m{line}\033[0m")
+                            else:
+                                print(f"   │  {line}")
+                        if diff.count('\n') > 20:
+                            print(f"   │  ... ({diff.count(chr(10)) - 20} more lines)")
+                    elif diff == "(Unable to fetch diff)":
+                        print(f"   │  (Unable to fetch diff)")
+                    else:
+                        print(f"   │  (No diff available)")
+            
+            print("\n" + "=" * 80)
+            print(f"Total: {len(oos_apps)} application(s) out of sync")
+        
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
 def main():
     """Main entry point."""
     if len(sys.argv) >= 2 and sys.argv[1] in ("--version", "-V"):
@@ -438,6 +507,7 @@ def main():
         print("  login             Login to ArgoCD and save credentials", file=sys.stderr)
         print("  app               Application management commands", file=sys.stderr)
         print("  detail <name>     Show application details and images", file=sys.stderr)
+        print("  oos               Show all Out of Sync apps with diffs", file=sys.stderr)
         print("  server            Start REST API server with Swagger UI", file=sys.stderr)
         sys.exit(0)
 
@@ -450,6 +520,7 @@ def main():
         print("  login             Login to ArgoCD and save credentials", file=sys.stderr)
         print("  app               Application management commands", file=sys.stderr)
         print("  detail <name>     Show application details and images", file=sys.stderr)
+        print("  oos               Show all Out of Sync apps with diffs", file=sys.stderr)
         print("  server            Start REST API server with Swagger UI", file=sys.stderr)
         print("  auto=true <name>  Enable auto-sync for application", file=sys.stderr)
         print("  auto=false <name> Disable auto-sync for application", file=sys.stderr)
@@ -463,6 +534,9 @@ def main():
 
     if command == "detail":
         sys.exit(handle_detail_command(sys.argv[2:]))
+
+    if command == "oos":
+        sys.exit(handle_oos_command(sys.argv[2:]))
 
     if command == "server":
         # Parse server options

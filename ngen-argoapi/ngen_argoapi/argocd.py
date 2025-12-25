@@ -281,6 +281,71 @@ class ArgocdClient:
         except Exception as e:
             raise Exception(f"Error updating auto-sync: {e}")
 
+    def get_out_of_sync_apps(self) -> list:
+        """
+        Get all applications that are Out of Sync with their diffs.
+        
+        Returns list of apps with:
+        - name: Application name
+        - syncStatus: Sync status (OutOfSync)
+        - healthStatus: Health status
+        - resources: List of out-of-sync resources with diffs
+        """
+        apps = self.list_applications()
+        out_of_sync_apps = []
+        
+        for app_data in apps:
+            name = app_data.get('metadata', {}).get('name', 'N/A')
+            status = app_data.get('status', {})
+            sync_status = status.get('sync', {}).get('status', 'Unknown')
+            health_status = status.get('health', {}).get('status', 'Unknown')
+            
+            # Only include OutOfSync apps
+            if sync_status != 'OutOfSync':
+                continue
+            
+            app_info = {
+                "name": name,
+                "syncStatus": sync_status,
+                "healthStatus": health_status,
+                "resources": []
+            }
+            
+            # Get resources that are out of sync
+            resources = status.get('resources', [])
+            for res in resources:
+                res_status = res.get('status', '')
+                if res_status == 'OutOfSync':
+                    res_info = {
+                        "kind": res.get('kind', ''),
+                        "name": res.get('name', ''),
+                        "namespace": res.get('namespace', ''),
+                        "group": res.get('group', ''),
+                        "version": res.get('version', ''),
+                        "status": res_status,
+                        "diff": None
+                    }
+                    
+                    # Try to get diff for this resource
+                    try:
+                        diff_data = self.get_resource_diff(
+                            name,
+                            res.get('group', ''),
+                            res.get('kind', ''),
+                            res.get('name', ''),
+                            res.get('namespace', ''),
+                            res.get('version', '')
+                        )
+                        res_info["diff"] = diff_data.get('diff', '')
+                    except Exception:
+                        res_info["diff"] = "(Unable to fetch diff)"
+                    
+                    app_info["resources"].append(res_info)
+            
+            out_of_sync_apps.append(app_info)
+        
+        return out_of_sync_apps
+
     def get_managed_resources(self, app_name: str) -> list:
         """Get managed resources for an application."""
         api_url = f"{self.url}/api/v1/applications/{app_name}/managed-resources"
