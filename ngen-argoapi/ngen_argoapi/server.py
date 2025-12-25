@@ -3,14 +3,30 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Optional
+from datetime import datetime
+import os
 import uvicorn
 
 from .argocd import ArgocdClient
 
+# Get version from environment variable or fallback to package version
+def get_version():
+    """Get application version from environment variable or package."""
+    env_version = os.environ.get("ARGOAPI_VERSION")
+    if env_version:
+        return env_version
+    try:
+        from . import __version__
+        return __version__
+    except ImportError:
+        return "unknown"
+
+APP_VERSION = get_version()
+
 app = FastAPI(
     title="ArgoAPI - ArgoCD API Proxy",
     description="REST API proxy for ArgoCD with simplified endpoints",
-    version="0.1.0",
+    version=APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -27,8 +43,55 @@ def get_client() -> ArgocdClient:
 
 @app.get("/", tags=["Health"])
 async def root():
-    """Health check endpoint."""
-    return {"status": "ok", "service": "argoapi"}
+    """Root endpoint."""
+    return {"status": "ok", "service": "argoapi", "version": APP_VERSION}
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    Health check endpoint for Kubernetes liveness/readiness probes.
+    
+    Returns:
+    - status: "healthy" or "unhealthy"
+    - version: Application version
+    - timestamp: Current server time
+    - argocd_connected: Whether ArgoCD connection is available
+    - token: Token status information (valid, username, error)
+    """
+    health_status = {
+        "status": "healthy",
+        "version": APP_VERSION,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "service": "argoapi"
+    }
+    
+    # Try to verify ArgoCD connection and token status
+    try:
+        client = get_client()
+        health_status["argocd_connected"] = True
+        
+        # Check token status
+        token_status = client.check_token_status()
+        health_status["token"] = {
+            "valid": token_status.get("valid", False),
+            "username": token_status.get("username"),
+            "error": token_status.get("error")
+        }
+        
+        # If token is not valid, mark status as degraded (but still healthy for k8s probe)
+        if not token_status.get("valid"):
+            health_status["status"] = "degraded"
+            
+    except Exception as e:
+        health_status["argocd_connected"] = False
+        health_status["argocd_error"] = str(e)
+        health_status["token"] = {
+            "valid": False,
+            "username": None,
+            "error": "Cannot check token - ArgoCD not configured"
+        }
+    
+    return health_status
 
 @app.get("/app/list", tags=["Applications"])
 async def list_applications():

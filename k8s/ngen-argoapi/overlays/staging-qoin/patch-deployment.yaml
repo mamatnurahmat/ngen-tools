@@ -8,9 +8,12 @@ spec:
       containers:
         - name: argoapi
           env:
+            - name: ARGOAPI_VERSION
+              value: "0.1.10"
             - name: ARGOCD_URL
               value: "https://193.3.2.100"
             - name: ARGOCD_USER
               value: "admin"
             - name: ARGOCD_PASSWORD
               value: "argoqoin"
+

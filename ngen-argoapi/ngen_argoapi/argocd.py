@@ -102,6 +102,42 @@ class ArgocdClient:
         except Exception as e:
              raise Exception(f"Login failed: {e}")
 
+    def check_token_status(self) -> dict:
+        """
+        Check if the current token is valid.
+        Returns dict with status info.
+        """
+        result = {
+            "valid": False,
+            "username": None,
+            "error": None
+        }
+        
+        if not self.token:
+            result["error"] = "No token configured"
+            return result
+        
+        # Try to get user info to validate token
+        api_url = f"{self.url}/api/v1/session/userinfo"
+        try:
+            response = httpx.get(api_url, headers=self._get_headers(), verify=not self.insecure, timeout=10.0)
+            if response.status_code == 200:
+                data = response.json()
+                result["valid"] = True
+                result["username"] = data.get("username", "unknown")
+                result["groups"] = data.get("groups", [])
+                result["iss"] = data.get("iss")
+            elif response.status_code == 401:
+                result["error"] = "Token expired or invalid"
+            else:
+                result["error"] = f"Unexpected status: {response.status_code}"
+        except httpx.TimeoutException:
+            result["error"] = "Connection timeout"
+        except Exception as e:
+            result["error"] = str(e)
+        
+        return result
+
     def get_application(self, app_name: str) -> Dict[str, Any]:
         """Get application details."""
         api_url = f"{self.url}/api/v1/applications/{app_name}"

@@ -222,8 +222,8 @@ check_package() {
         exit 1
     fi
     
-    if [ ! -d "ngen_argocd" ]; then
-        print_error "ngen_argocd package directory not found!"
+    if [ ! -d "ngen_argoapi" ]; then
+        print_error "ngen_argoapi package directory not found!"
         exit 1
     fi
     

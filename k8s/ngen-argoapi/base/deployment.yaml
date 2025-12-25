@@ -24,16 +24,43 @@ spec:
             - /bin/bash
             - -c
             - |
-              pip install ngen-argoapi==0.1.8 && \
+              pip install ngen-argoapi==$ARGOAPI_VERSION && \
               argoapi login --url $ARGOCD_URL --user $ARGOCD_USER --password $ARGOCD_PASSWORD && \
               argoapi server
           env:
+            - name: ARGOAPI_VERSION
+              value: "0.1.8"
             - name: ARGOCD_URL
               value: "https://argocd.example.com"
             - name: ARGOCD_USER
               value: "admin"
             - name: ARGOCD_PASSWORD
               value: "password"
+          # Health check probes using /health endpoint
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8899
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8899
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8899
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           resources:
             requests:
               memory: "128Mi"
@@ -41,3 +68,4 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+
