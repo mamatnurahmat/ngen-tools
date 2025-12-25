@@ -357,6 +357,74 @@ def handle_app_command(args: list) -> int:
         print(f"Unknown app command: {subcommand}", file=sys.stderr)
         return 1
 
+def handle_detail_command(args: list) -> int:
+    """
+    Handle detail command to show application details including images.
+    Usage: argoapi detail <app_name>
+    """
+    if not args or args[0] in ("-h", "--help"):
+        print("Usage: argoapi detail <app_name>", file=sys.stderr)
+        print("\nShow application details including container images.", file=sys.stderr)
+        print("\nExamples:", file=sys.stderr)
+        print("  argoapi detail my-app", file=sys.stderr)
+        print("  argoapi detail my-app --json", file=sys.stderr)
+        return 0
+
+    app_name = args[0]
+    json_output = "--json" in args
+    
+    try:
+        client = ArgocdClient()
+        result = client.get_application_images(app_name)
+        
+        if json_output:
+            print(json.dumps(result, indent=2))
+        else:
+            images = result.get("images", [])
+            details = result.get("details", [])
+            
+            print(f"Application: {app_name}")
+            print(f"Total Images: {len(images)}")
+            print("")
+            
+            if images:
+                print("Container Images:")
+                print("-" * 60)
+                for i, image in enumerate(images, 1):
+                    # Parse image to show registry/repo:tag
+                    print(f"  {i}. {image}")
+            else:
+                print("No container images found.")
+            
+            if details:
+                print("")
+                print("Workload Resources:")
+                print("-" * 60)
+                print(f"{'KIND':<20} {'NAME':<25} {'STATUS':<15}")
+                for d in details:
+                    kind = d.get("kind", "")
+                    name = d.get("name", "")
+                    status = d.get("status", "Unknown")
+                    health = d.get("health", "Unknown")
+                    
+                    # Colorize status
+                    if status == "Synced":
+                        status_display = f"\033[92m{status}\033[0m"
+                    elif status == "OutOfSync":
+                        status_display = f"\033[93m{status}\033[0m"
+                    else:
+                        status_display = status
+                    
+                    print(f"  {kind:<18} {name:<25} {status_display}")
+        
+        return 0
+    except KeyError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
 def main():
     """Main entry point."""
     if len(sys.argv) >= 2 and sys.argv[1] in ("--version", "-V"):
@@ -369,6 +437,7 @@ def main():
         print("\nCommands:", file=sys.stderr)
         print("  login             Login to ArgoCD and save credentials", file=sys.stderr)
         print("  app               Application management commands", file=sys.stderr)
+        print("  detail <name>     Show application details and images", file=sys.stderr)
         print("  server            Start REST API server with Swagger UI", file=sys.stderr)
         sys.exit(0)
 
@@ -380,6 +449,7 @@ def main():
         print("\nCommands:", file=sys.stderr)
         print("  login             Login to ArgoCD and save credentials", file=sys.stderr)
         print("  app               Application management commands", file=sys.stderr)
+        print("  detail <name>     Show application details and images", file=sys.stderr)
         print("  server            Start REST API server with Swagger UI", file=sys.stderr)
         print("  auto=true <name>  Enable auto-sync for application", file=sys.stderr)
         print("  auto=false <name> Disable auto-sync for application", file=sys.stderr)
@@ -390,6 +460,9 @@ def main():
 
     if command == "app":
         sys.exit(handle_app_command(sys.argv[2:]))
+
+    if command == "detail":
+        sys.exit(handle_detail_command(sys.argv[2:]))
 
     if command == "server":
         # Parse server options

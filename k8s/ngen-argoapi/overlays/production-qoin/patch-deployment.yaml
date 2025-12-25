@@ -9,7 +9,7 @@ spec:
         - name: argoapi
           env:
             - name: ARGOAPI_VERSION
-              value: "0.1.11"
+              value: "latest"
             - name: ROOT_PATH
               value: "/api/v1/namespaces/default/services/http:argocd-production-qoin-argoapi:8899/proxy"
             - name: ARGOCD_URL

@@ -23,12 +23,17 @@ def get_version():
 
 APP_VERSION = get_version()
 
+# Get root path from environment (useful for reverse proxy setups)
+ROOT_PATH = os.environ.get("ROOT_PATH", "")
+
 app = FastAPI(
     title="ArgoAPI - ArgoCD API Proxy",
     description="REST API proxy for ArgoCD with simplified endpoints",
     version=APP_VERSION,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    root_path=ROOT_PATH
 )
 
 def get_client() -> ArgocdClient:
@@ -45,6 +50,65 @@ def get_client() -> ArgocdClient:
 async def root():
     """Root endpoint."""
     return {"status": "ok", "service": "argoapi", "version": APP_VERSION}
+
+def get_latest_pypi_version():
+    """Check the latest version available on PyPI."""
+    import httpx
+    try:
+        response = httpx.get("https://pypi.org/pypi/ngen-argoapi/json", timeout=5.0)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("info", {}).get("version", "unknown")
+    except Exception:
+        pass
+    return None
+
+def get_installed_version():
+    """Get the actual installed package version."""
+    try:
+        from . import __version__
+        return __version__
+    except ImportError:
+        return "unknown"
+
+@app.get("/version", tags=["Health"])
+async def version_info():
+    """
+    Get version information including latest available version from PyPI.
+    
+    Returns:
+    - current: Currently running version
+    - installed: Installed package version
+    - latest: Latest version available on PyPI
+    - is_latest: Whether running the latest version
+    - update_available: Whether an update is available
+    """
+    current_version = APP_VERSION
+    installed_version = get_installed_version()
+    latest_version = get_latest_pypi_version()
+    
+    # Determine if we're running latest
+    is_latest = False
+    update_available = False
+    
+    if latest_version:
+        # Compare versions (simple string comparison works for semantic versioning)
+        if current_version == "latest":
+            # If using "latest" env var, check installed version
+            is_latest = installed_version == latest_version
+            update_available = installed_version != latest_version
+        else:
+            is_latest = current_version == latest_version
+            update_available = current_version != latest_version
+    
+    return {
+        "current": current_version,
+        "installed": installed_version,
+        "latest": latest_version or "unable to fetch",
+        "is_latest": is_latest,
+        "update_available": update_available,
+        "pypi_url": "https://pypi.org/project/ngen-argoapi/"
+    }
 
 @app.get("/health", tags=["Health"])
 async def health_check():
@@ -280,6 +344,28 @@ async def set_auto_sync(app_name: str, enabled: bool = True, prune: bool = False
             "selfHeal": self_heal if enabled else None,
             "success": True
         }
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/detail/{app_name}", tags=["Details"])
+async def get_application_details(app_name: str):
+    """
+    Get application details including container images.
+    
+    Returns:
+    - application: Application name
+    - images: List of unique container images
+    - count: Number of unique images
+    - details: Workload resources in the application
+    """
+    try:
+        client = get_client()
+        result = client.get_application_images(app_name)
+        return result
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except HTTPException:

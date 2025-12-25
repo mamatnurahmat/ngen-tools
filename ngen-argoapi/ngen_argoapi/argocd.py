@@ -183,6 +183,58 @@ class ArgocdClient:
         except Exception as e:
              raise Exception(f"Error listing applications: {e}")
 
+    def get_application_images(self, app_name: str) -> Dict[str, Any]:
+        """
+        Get list of container images used in an application.
+        
+        Returns dict with:
+        - images: List of unique image names
+        - details: Detailed info per image (resource, container name)
+        """
+        app_data = self.get_application(app_name)
+        
+        result = {
+            "application": app_name,
+            "images": [],
+            "details": []
+        }
+        
+        # First, try to get images from summary (if available)
+        summary = app_data.get("status", {}).get("summary", {})
+        summary_images = summary.get("images", [])
+        
+        if summary_images:
+            result["images"] = summary_images
+        
+        # Also get detailed resource info
+        resources = app_data.get("status", {}).get("resources", [])
+        
+        seen_images = set(summary_images)
+        
+        for resource in resources:
+            kind = resource.get("kind", "")
+            name = resource.get("name", "")
+            namespace = resource.get("namespace", "")
+            
+            # For Deployments, StatefulSets, DaemonSets, Jobs, CronJobs, Pods
+            if kind in ["Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "Pod", "Job", "CronJob"]:
+                # Try to get the images from the resource
+                # The images are typically in spec.template.spec.containers[].image
+                # Since we only have summary here, we'll note which resources exist
+                result["details"].append({
+                    "kind": kind,
+                    "name": name,
+                    "namespace": namespace,
+                    "status": resource.get("status", "Unknown"),
+                    "health": resource.get("health", {}).get("status", "Unknown")
+                })
+        
+        # Make sure images list is unique
+        result["images"] = list(set(result["images"]))
+        result["count"] = len(result["images"])
+        
+        return result
+
     def set_auto_sync(self, app_name: str, enabled: bool, prune: bool = False, self_heal: bool = False) -> dict:
         """
         Enable or disable auto-sync for an application.

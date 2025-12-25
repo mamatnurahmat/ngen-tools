@@ -24,12 +24,16 @@ spec:
             - /bin/bash
             - -c
             - |
-              pip install ngen-argoapi==$ARGOAPI_VERSION && \
+              if [ "$ARGOAPI_VERSION" = "latest" ] || [ -z "$ARGOAPI_VERSION" ]; then
+                pip install --upgrade ngen-argoapi
+              else
+                pip install ngen-argoapi==$ARGOAPI_VERSION
+              fi && \
               argoapi login --url $ARGOCD_URL --user $ARGOCD_USER --password $ARGOCD_PASSWORD && \
               argoapi server
           env:
             - name: ARGOAPI_VERSION
-              value: "0.1.8"
+              value: "latest"
             - name: ARGOCD_URL
               value: "https://argocd.example.com"
             - name: ARGOCD_USER
