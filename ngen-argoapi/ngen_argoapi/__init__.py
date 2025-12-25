@@ -1,7 +1,7 @@
 import os
 
 # Default version, can be overridden by ARGOAPI_VERSION environment variable
-_DEFAULT_VERSION = "0.1.8"
+_DEFAULT_VERSION = "0.1.9"
 
 def _get_version():
     """Get version from environment variable or use default."""
