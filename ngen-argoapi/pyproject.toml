@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ngen-argoapi"
-version = "0.1.14"
+version = "0.1.15"
 description = "ArgoCD API management CLI and wrapper package"
 readme = "README.md"
 requires-python = ">=3.7"
