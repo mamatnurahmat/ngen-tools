@@ -32,14 +32,16 @@ def cmd_build(args):
         ref = args.ref
         
         if args.local and (not repo or not ref):
-            print("🔍 Detecting git repository info...")
+            if not args.json:
+                print("🔍 Detecting git repository info...")
             git_info = get_git_info()
             if not repo:
                 repo = git_info["repo"]
             if not ref:
                 ref = git_info["ref"]
-            print(f"   Repository: {repo}")
-            print(f"   Reference: {ref}")
+            if not args.json:
+                print(f"   Repository: {repo}")
+                print(f"   Reference: {ref}")
         
         # Validate required args for remote build
         if not args.local and (not repo or not ref):
@@ -74,11 +76,24 @@ def cmd_build(args):
             remote=remote,
             rebuild=args.rebuild,
             cicd_path=cicd_path,
-            extra_args=extra_build_args if extra_build_args else None
+            extra_args=extra_build_args if extra_build_args else None,
+            json_mode=args.json or args.json_detail
         )
         
-        if args.json:
+        if args.json_detail:
+            # Full JSON output
             print(json.dumps(result, indent=2))
+        elif args.json:
+            # Simple JSON output: only NS, DEPLOY, IMAGE
+            simple_result = {
+                "ready": result.get("success", False),
+                "NS": result.get("NS", ""),
+                "DEPLOY": result.get("DEPLOY", ""),
+                "IMAGE": result.get("image_tag", "")
+            }
+            if result.get("error"):
+                simple_result["error"] = result.get("error")
+            print(json.dumps(simple_result, indent=2))
         else:
             if result.get('dry_run'):
                 print(f"\n🔍 Dry Run Mode")
@@ -107,13 +122,13 @@ def cmd_build(args):
         sys.exit(0 if result['success'] else 1)
         
     except BuildxError as e:
-        if args.json:
+        if args.json or args.json_detail:
             print(json.dumps({'success': False, 'error': str(e)}, indent=2))
         else:
             print(f"❌ Error: {e}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        if args.json:
+        if args.json or args.json_detail:
             print(json.dumps({'success': False, 'error': str(e)}, indent=2))
         else:
             print(f"❌ Unexpected error: {e}", file=sys.stderr)
@@ -263,7 +278,8 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-buildx
     parser.add_argument('--build-arg', action='append', metavar='KEY=VALUE', 
                         help='Set build argument (can be used multiple times, overrides arg.json)')
     parser.add_argument('--dry-run', action='store_true', help='Show command without executing')
-    parser.add_argument('--json', action='store_true', help='Output as JSON')
+    parser.add_argument('--json', action='store_true', help='Output as simple JSON (NS, DEPLOY, IMAGE)')
+    parser.add_argument('--json-detail', action='store_true', help='Output as detailed JSON with all fields')
     
     # Parse arguments
     args = parser.parse_args()

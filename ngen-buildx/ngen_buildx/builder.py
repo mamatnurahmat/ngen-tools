@@ -307,6 +307,32 @@ def is_tag_ref(ref: str) -> bool:
     return False
 
 
+def get_env_from_ref(ref: str) -> str:
+    """Get environment name from git reference.
+    
+    Args:
+        ref: Branch or tag reference
+    
+    Returns:
+        str: Environment name (develop, staging, or production)
+    """
+    # Check if ref starts with v or V (version tag = production)
+    if ref.lower().startswith('v'):
+        return "production"
+    
+    # Map common branch names to environments
+    ref_lower = ref.lower()
+    if ref_lower in ['develop', 'development', 'dev']:
+        return "develop"
+    elif ref_lower in ['staging', 'stage']:
+        return "staging"
+    elif ref_lower in ['master', 'main', 'production', 'prod']:
+        return "production"
+    
+    # Default to the ref itself (for custom branches like 'develop', 'staging')
+    return ref
+
+
 def check_image_exists(image_tag: str) -> bool:
     """Check if Docker image already exists in registry.
     
@@ -411,7 +437,8 @@ def build_docker_command(
     org: Optional[str] = None,
     remote: bool = True,
     cicd_path: Optional[str] = None,
-    extra_args: Optional[List[str]] = None
+    extra_args: Optional[List[str]] = None,
+    json_mode: bool = False
 ) -> Dict[str, Any]:
     """Build docker buildx command with all arguments.
     
@@ -427,6 +454,7 @@ def build_docker_command(
         remote: If True, build from remote git URL (default: True)
         cicd_path: Local path to cicd.json (if provided, uses local file instead of fetching from repo)
         extra_args: Additional build arguments
+        json_mode: If True, suppress non-JSON output for piping to jq
     
     Returns:
         dict: Result with 'command' list and 'command_str' string
@@ -443,7 +471,8 @@ def build_docker_command(
     # Load cicd.json - either from local file or from remote repository
     if cicd_path:
         cicd_config = load_local_cicd_config(cicd_path)
-        print(f"📋 Using local CICD config: {cicd_path}")
+        if not json_mode:
+            print(f"📋 Using local CICD config: {cicd_path}")
     else:
         cicd_config = fetch_cicd_config(repo, ref, org)
     
@@ -588,7 +617,8 @@ def execute_build(
     remote: bool = True,
     rebuild: bool = False,
     cicd_path: Optional[str] = None,
-    extra_args: Optional[List[str]] = None
+    extra_args: Optional[List[str]] = None,
+    json_mode: bool = False
 ) -> Dict[str, Any]:
     """Execute docker buildx build command.
     
@@ -606,6 +636,7 @@ def execute_build(
         rebuild: If True, force rebuild even if image exists
         cicd_path: Local path to cicd.json (for local builds)
         extra_args: Additional build arguments
+        json_mode: If True, suppress non-JSON output for piping to jq
     
     Returns:
         dict: Result with success status and output
@@ -622,11 +653,13 @@ def execute_build(
             org=org,
             remote=remote,
             cicd_path=cicd_path,
-            extra_args=extra_args
+            extra_args=extra_args,
+            json_mode=json_mode
         )
         
         cmd = build_result["command"]
         command_str = build_result["command_str"]
+        cicd_config = build_result["cicd_config"]
         
         # Extract image tag from command to check if exists
         image_tag = None
@@ -635,6 +668,13 @@ def execute_build(
                 image_tag = cmd[i + 1]
                 break
         
+        # Calculate IMAGE, DEPLOY, and NS for JSON output
+        image_name = cicd_config.get("IMAGE", "")
+        deploy_name = cicd_config.get("DEPLOYMENT", "")
+        project_name = cicd_config.get("PROJECT", "")
+        env_name = get_env_from_ref(ref)
+        namespace = f"{env_name}-{project_name}" if project_name else env_name
+        
         if dry_run:
             # Check image existence for dry run info
             image_exists = check_image_exists(image_tag) if image_tag else False
@@ -642,7 +682,10 @@ def execute_build(
                 "success": True,
                 "dry_run": True,
                 "command": command_str,
-                "cicd_config": build_result["cicd_config"],
+                "IMAGE": image_name,
+                "DEPLOY": deploy_name,
+                "NS": namespace,
+                "cicd_config": cicd_config,
                 "image_tag": image_tag,
                 "image_exists": image_exists,
                 "message": "Dry run - command not executed"
@@ -650,25 +693,32 @@ def execute_build(
         
         # Check if image already exists (unless rebuild is forced)
         if not rebuild and image_tag:
-            print(f"🔍 Checking if image exists: {image_tag}")
+            if not json_mode:
+                print(f"🔍 Checking if image exists: {image_tag}")
             if check_image_exists(image_tag):
                 return {
                     "success": True,
                     "skipped": True,
+                    "IMAGE": image_name,
+                    "DEPLOY": deploy_name,
+                    "NS": namespace,
                     "image_tag": image_tag,
-                    "cicd_config": build_result["cicd_config"],
+                    "cicd_config": cicd_config,
                     "message": f"Image already exists: {image_tag}. Use --rebuild to force rebuild."
                 }
             else:
-                print(f"   Image not found, proceeding with build...")
+                if not json_mode:
+                    print(f"   Image not found, proceeding with build...")
         elif rebuild:
-            print(f"🔄 Rebuild mode enabled, skipping image check")
+            if not json_mode:
+                print(f"🔄 Rebuild mode enabled, skipping image check")
         
         # Execute the command
-        print(f"🚀 Executing build command...")
-        print(f"{'=' * 60}")
-        print(command_str)
-        print(f"{'=' * 60}")
+        if not json_mode:
+            print(f"🚀 Executing build command...")
+            print(f"{'=' * 60}")
+            print(command_str)
+            print(f"{'=' * 60}")
         
         result = subprocess.run(
             cmd,
@@ -688,8 +738,11 @@ def execute_build(
             return {
                 "success": True,
                 "command": command_str,
+                "IMAGE": image_name,
+                "DEPLOY": deploy_name,
+                "NS": namespace,
                 "image_tag": image_tag,
-                "cicd_config": build_result["cicd_config"],
+                "cicd_config": cicd_config,
                 "message": "Build completed successfully"
             }
         else:
@@ -705,8 +758,11 @@ def execute_build(
             return {
                 "success": False,
                 "command": command_str,
+                "IMAGE": image_name,
+                "DEPLOY": deploy_name,
+                "NS": namespace,
                 "image_tag": image_tag,
-                "cicd_config": build_result["cicd_config"],
+                "cicd_config": cicd_config,
                 "message": f"Build failed with exit code {result.returncode}"
             }
             

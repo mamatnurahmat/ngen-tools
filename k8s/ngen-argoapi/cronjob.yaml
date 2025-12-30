@@ -1,0 +1,119 @@
+---
+# CronJob untuk argocd-develop-qoin-argoapi
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redeploy-argocd-develop-qoin-argoapi
+  namespace: default
+spec:
+  schedule: "0 */12 * * *"  # Setiap menit
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: redeploy-sa
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/sh
+            - -c
+            - kubectl rollout restart deployment/argocd-develop-qoin-argoapi -n default
+          restartPolicy: OnFailure
+---
+# CronJob untuk argocd-production-qoin-argoapi
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redeploy-argocd-production-qoin-argoapi
+  namespace: default
+spec:
+  schedule: "0 */12 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: redeploy-sa
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/sh
+            - -c
+            - kubectl rollout restart deployment/argocd-production-qoin-argoapi -n default
+          restartPolicy: OnFailure
+---
+# CronJob untuk argocd-production-ue-argoapi
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redeploy-argocd-production-ue-argoapi
+  namespace: default
+spec:
+  schedule: "0 */12 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: redeploy-sa
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/sh
+            - -c
+            - kubectl rollout restart deployment/argocd-production-ue-argoapi -n default
+          restartPolicy: OnFailure
+---
+# CronJob untuk argocd-staging-qoin-argoapi
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redeploy-argocd-staging-qoin-argoapi
+  namespace: default
+spec:
+  schedule: "0 */12 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: redeploy-sa
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/sh
+            - -c
+            - kubectl rollout restart deployment/argocd-staging-qoin-argoapi -n default
+          restartPolicy: OnFailure
+---
+# ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: redeploy-sa
+  namespace: default
+---
+# ClusterRole dengan akses ke semua namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: redeploy-clusterrole
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "patch"]
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: redeploy-clusterrolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: redeploy-clusterrole
+subjects:
+- kind: ServiceAccount
+  name: redeploy-sa
+  namespace: default
