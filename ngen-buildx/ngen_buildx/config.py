@@ -31,6 +31,10 @@ DEFAULT_CPU_QUOTA=200000
 # Registry Configuration
 REGISTRY01_URL=registry.example.com
 
+# Docker Scout Configuration (for CVE scanning)
+# DOCKER_SCOUT_HUB_USER=your_dockerhub_username
+# DOCKER_SCOUT_HUB_PASSWORD=your_dockerhub_access_token
+
 # GitOps Settings (optional, uses ngen-gitops defaults if not set)
 # BITBUCKET_ORG=loyaltoid
 
@@ -95,6 +99,10 @@ def load_config() -> Dict[str, Any]:
         },
         "gitops": {
             "org": os.getenv("BITBUCKET_ORG", "loyaltoid"),
+        },
+        "scout": {
+            "hub_user": os.getenv("DOCKER_SCOUT_HUB_USER", ""),
+            "hub_password": os.getenv("DOCKER_SCOUT_HUB_PASSWORD", ""),
         },
         "notifications": {
             "teams_webhook": os.getenv("TEAMS_WEBHOOK", ""),

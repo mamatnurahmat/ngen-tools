@@ -2,6 +2,7 @@
 import json
 import os
 import subprocess
+import sys
 import urllib.request
 import urllib.error
 from datetime import datetime
@@ -780,3 +781,341 @@ def execute_build(
         }
 
 
+def scan_cves(
+    repo: str,
+    ref: str,
+    org: Optional[str] = None,
+    output_format: str = "summary",
+    json_mode: bool = False
+) -> Dict[str, Any]:
+    """Scan Docker image for CVEs using docker scout.
+    
+    Args:
+        repo: Repository name
+        ref: Branch or tag reference
+        org: Organization (optional)
+        output_format: Output format (summary, packages, or sarif)
+        json_mode: If True, suppress non-JSON output
+    
+    Returns:
+        dict: Result with CVE scan information
+    """
+    try:
+        # Load configuration
+        env_config = load_config()
+        
+        # Fetch cicd.json to get image name
+        cicd_config = fetch_cicd_config(repo, ref, org)
+        
+        # Get image tag
+        registry_url = env_config.get("registry", {}).get("registry01_url", "")
+        image_name = cicd_config.get("IMAGE", "")
+        
+        # Determine image tag version
+        if is_tag_ref(ref):
+            image_version = ref
+        else:
+            image_version = get_short_commit_id(repo, ref, org)
+        
+        # Build full image tag
+        if registry_url:
+            image_tag = f"{registry_url}/{image_name}:{image_version}"
+        else:
+            image_tag = f"{image_name}:{image_version}"
+        
+        if not json_mode:
+            print(f"🔍 Scanning image for CVEs: {image_tag}")
+            print(f"{'=' * 60}")
+        
+        # Get Docker Scout credentials from config
+        scout_config = env_config.get("scout", {})
+        scout_user = scout_config.get("hub_user", os.environ.get("DOCKER_SCOUT_HUB_USER", ""))
+        scout_password = scout_config.get("hub_password", os.environ.get("DOCKER_SCOUT_HUB_PASSWORD", ""))
+        
+        # Build docker run command for scout-cli
+        home_dir = os.path.expanduser("~")
+        cmd = [
+            "docker", "run", "--rm", "-t",
+            "-u", "root",
+            "-v", "/var/run/docker.sock:/var/run/docker.sock",
+            "-v", f"{home_dir}/.docker:/root/.docker",
+        ]
+        
+        # Add credentials if available
+        if scout_user:
+            cmd.extend(["-e", f"DOCKER_SCOUT_HUB_USER={scout_user}"])
+        if scout_password:
+            cmd.extend(["-e", f"DOCKER_SCOUT_HUB_PASSWORD={scout_password}"])
+        
+        # Add scout-cli image and command
+        cmd.extend(["docker/scout-cli", "cves"])
+        
+        # Add format option
+        if output_format == "sarif":
+            cmd.extend(["--format", "sarif"])
+        elif output_format == "packages":
+            cmd.extend(["--format", "packages"])
+        elif output_format == "markdown":
+            cmd.extend(["--format", "markdown"])
+        # default is summary (no extra args needed)
+        
+        # Add image to scan
+        cmd.append(image_tag)
+        
+        # Run docker scout cves
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True
+        )
+        
+        # Calculate NS, DEPLOY, IMAGE for output
+        project_name = cicd_config.get("PROJECT", "")
+        deploy_name = cicd_config.get("DEPLOYMENT", "")
+        env_name = get_env_from_ref(ref)
+        namespace = f"{env_name}-{project_name}" if project_name else env_name
+        
+        if result.returncode == 0:
+            if not json_mode:
+                print(result.stdout)
+                if result.stderr:
+                    print(result.stderr)
+            
+            return {
+                "success": True,
+                "IMAGE": image_tag,
+                "DEPLOY": deploy_name,
+                "NS": namespace,
+                "cicd_config": cicd_config,
+                "scan_output": result.stdout,
+                "message": "CVE scan completed successfully"
+            }
+        else:
+            if not json_mode:
+                print(f"❌ Scout scan failed")
+                if result.stdout:
+                    print(result.stdout)
+                if result.stderr:
+                    print(result.stderr, file=sys.stderr)
+            
+            return {
+                "success": False,
+                "IMAGE": image_tag,
+                "DEPLOY": deploy_name,
+                "NS": namespace,
+                "cicd_config": cicd_config,
+                "scan_output": result.stdout,
+                "error": result.stderr,
+                "message": f"CVE scan failed with exit code {result.returncode}"
+            }
+            
+    except BuildxError as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Scan error: {e}"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Unexpected error: {e}"
+        }
+
+
+def scan_cves_image(
+    image_tag: str,
+    output_format: str = "markdown",
+    json_mode: bool = False
+) -> Dict[str, Any]:
+    """Scan Docker image for CVEs using docker scout (direct image tag).
+    
+    Args:
+        image_tag: Full Docker image tag to scan
+        output_format: Output format (summary, packages, sarif, or markdown)
+        json_mode: If True, suppress non-JSON output
+    
+    Returns:
+        dict: Result with CVE scan information
+    """
+    try:
+        # Load configuration
+        env_config = load_config()
+        
+        if not json_mode:
+            print(f"🔍 Scanning image for CVEs: {image_tag}")
+            print(f"{'=' * 60}")
+        
+        # Get Docker Scout credentials from config
+        scout_config = env_config.get("scout", {})
+        scout_user = scout_config.get("hub_user", os.environ.get("DOCKER_SCOUT_HUB_USER", ""))
+        scout_password = scout_config.get("hub_password", os.environ.get("DOCKER_SCOUT_HUB_PASSWORD", ""))
+        
+        # Build docker run command for scout-cli
+        home_dir = os.path.expanduser("~")
+        cmd = [
+            "docker", "run", "--rm", "-t",
+            "-u", "root",
+            "-v", "/var/run/docker.sock:/var/run/docker.sock",
+            "-v", f"{home_dir}/.docker:/root/.docker",
+        ]
+        
+        # Add credentials if available
+        if scout_user:
+            cmd.extend(["-e", f"DOCKER_SCOUT_HUB_USER={scout_user}"])
+        if scout_password:
+            cmd.extend(["-e", f"DOCKER_SCOUT_HUB_PASSWORD={scout_password}"])
+        
+        # Add scout-cli image and command
+        cmd.extend(["docker/scout-cli", "cves"])
+        
+        # Add format option
+        if output_format == "sarif":
+            cmd.extend(["--format", "sarif"])
+        elif output_format == "packages":
+            cmd.extend(["--format", "packages"])
+        elif output_format == "markdown":
+            cmd.extend(["--format", "markdown"])
+        # default is summary (no extra args needed)
+        
+        # Add image to scan
+        cmd.append(image_tag)
+        
+        # Run docker scout cves
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            if not json_mode:
+                print(result.stdout)
+                if result.stderr:
+                    print(result.stderr)
+            
+            return {
+                "success": True,
+                "IMAGE": image_tag,
+                "scan_output": result.stdout,
+                "message": "CVE scan completed successfully"
+            }
+        else:
+            if not json_mode:
+                print(f"❌ Scout scan failed")
+                if result.stdout:
+                    print(result.stdout)
+                if result.stderr:
+                    print(result.stderr, file=sys.stderr)
+            
+            return {
+                "success": False,
+                "IMAGE": image_tag,
+                "scan_output": result.stdout,
+                "error": result.stderr,
+                "message": f"CVE scan failed with exit code {result.returncode}"
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Unexpected error: {e}"
+        }
+
+
+def send_cves_notification(
+    image_tag: str,
+    scan_output: str,
+    success: bool = True,
+    lines: int = 12
+) -> bool:
+    """Send CVE scan notification to Microsoft Teams webhook.
+    
+    Args:
+        image_tag: Docker image that was scanned
+        scan_output: Raw markdown output from docker scout
+        success: Whether scan was successful
+        lines: Number of lines to include in notification (unused, kept for compatibility)
+    
+    Returns:
+        bool: True if notification sent successfully
+    """
+    import re
+    
+    webhook_url = get_teams_webhook()
+    
+    if not webhook_url:
+        print("⚠️  Teams webhook not configured in ~/.ngen-buildx/.env")
+        return False
+    
+    # Extract HTML section from <h2> to first </details></table></details>
+    # This includes the image reference and vulnerability summary
+    html_content = ""
+    
+    # Try to extract the summary section
+    h2_match = re.search(r'<h2>.*?</h2>', scan_output, re.DOTALL)
+    if h2_match:
+        start_idx = h2_match.start()
+        
+        # Find the end of the first details block (Image Reference section)
+        end_pattern = r'</details></table>\s*</details>'
+        end_match = re.search(end_pattern, scan_output[start_idx:], re.DOTALL)
+        
+        if end_match:
+            html_content = scan_output[start_idx:start_idx + end_match.end()]
+        else:
+            # Fallback: take first section until </table>
+            table_end = scan_output.find('</table>', start_idx)
+            if table_end > 0:
+                html_content = scan_output[start_idx:table_end + 8]
+    
+    # If no HTML found, use first N lines as fallback
+    if not html_content:
+        output_lines = scan_output.split('\n')[:lines]
+        html_content = '<pre>' + '\n'.join(output_lines) + '</pre>'
+    
+    # Determine color based on content
+    if "critical" in scan_output.lower() and "critical-0" not in scan_output.lower():
+        theme_color = "FF0000"  # Red for critical
+    elif "high" in scan_output.lower() and "high-0" not in scan_output.lower():
+        theme_color = "FF6600"  # Orange for high
+    else:
+        theme_color = "00AA00"  # Green
+    
+    status_emoji = "✅" if success else "❌"
+    
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Create Teams MessageCard payload with HTML content
+    payload = {
+        "@type": "MessageCard",
+        "@context": "https://schema.org/extensions",
+        "themeColor": theme_color,
+        "summary": f"{status_emoji} Docker Scout CVE Report - {image_tag}",
+        "sections": [{
+            "activityTitle": f"{status_emoji} Docker Scout CVE Report",
+            "activitySubtitle": f"Scanned at: {timestamp}",
+            "text": html_content,
+            "markdown": True
+        }]
+    }
+    
+    try:
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(
+            webhook_url,
+            data=data,
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status == 200:
+                print(f"✅ CVE report sent to Teams")
+                return True
+            return False
+    except (urllib.error.URLError, urllib.error.HTTPError) as e:
+        print(f"⚠️  Failed to send Teams notification: {e}")
+        return False
+    except Exception as e:
+        print(f"⚠️  Failed to send Teams notification: {e}")
+        return False

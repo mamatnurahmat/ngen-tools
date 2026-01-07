@@ -18,7 +18,7 @@ from .config import (
     create_default_arg_json,
     ensure_config_dir
 )
-from .builder import execute_build, BuildxError, get_git_info
+from .builder import execute_build, scan_cves, scan_cves_image, send_cves_notification, BuildxError, get_git_info
 
 
 def cmd_build(args):
@@ -216,6 +216,62 @@ def cmd_init(args):
         sys.exit(1)
 
 
+def cmd_cves(args):
+    """Handle cves command - scan image for CVEs using docker scout."""
+    try:
+        # Check if scanning by image tag directly or by repo/ref
+        if args.image:
+            result = scan_cves_image(
+                image_tag=args.image,
+                output_format=args.format if hasattr(args, 'format') else 'markdown',
+                json_mode=args.json or args.json_detail
+            )
+        else:
+            result = scan_cves(
+                repo=args.repo,
+                ref=args.ref,
+                org=args.org,
+                output_format=args.format if hasattr(args, 'format') else 'markdown',
+                json_mode=args.json or args.json_detail
+            )
+        
+        # Send notification if --notif flag is set
+        if hasattr(args, 'notif') and args.notif and result.get('scan_output'):
+            send_cves_notification(
+                image_tag=result.get('IMAGE', args.image or ''),
+                scan_output=result.get('scan_output', ''),
+                success=result.get('success', False),
+                lines=12
+            )
+        
+        if args.json_detail:
+            # Full JSON output
+            print(json.dumps(result, indent=2))
+        elif args.json:
+            # Simple JSON output
+            simple_result = {
+                "ready": result.get("success", False),
+                "IMAGE": result.get("IMAGE", "")
+            }
+            if result.get("NS"):
+                simple_result["NS"] = result.get("NS")
+            if result.get("DEPLOY"):
+                simple_result["DEPLOY"] = result.get("DEPLOY")
+            if result.get("error"):
+                simple_result["error"] = result.get("error")
+            print(json.dumps(simple_result, indent=2))
+        # else: output is already printed by scan_cves function
+        
+        sys.exit(0 if result['success'] else 1)
+        
+    except Exception as e:
+        if args.json or args.json_detail:
+            print(json.dumps({'success': False, 'error': str(e)}, indent=2))
+        else:
+            print(f"❌ Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -240,6 +296,13 @@ Examples:
   buildx myrepo main --platform linux/amd64,linux/arm64
   buildx myrepo v1.0.0 --local --tag myregistry/myapp:v1.0.0 --push
   
+  # CVE Scanning with Docker Scout
+  buildx --cves --image myregistry/myapp:v1.0  # Scan image directly
+  buildx --cves myrepo develop               # Scan via repo/ref lookup
+  buildx --cves --image myapp:latest --json  # Output as JSON
+  buildx --cves --image myapp:v1 --format packages  # Show vulnerable packages
+  buildx --cves --image myapp:v1 --notif     # Scan and send to Teams
+  
   # Configuration
   buildx --config                # Show current configuration
   buildx --init                  # Initialize config files
@@ -259,6 +322,11 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-buildx
     parser.add_argument('--config', action='store_true', help='Show current configuration')
     parser.add_argument('--init', action='store_true', help='Initialize configuration files')
     parser.add_argument('--force', action='store_true', help='Force recreate config files (use with --init)')
+    parser.add_argument('--cves', action='store_true', help='Scan image for CVEs using docker scout')
+    parser.add_argument('--image', metavar='IMAGE_TAG', help='Docker image tag to scan for CVEs (use with --cves)')
+    parser.add_argument('--notif', action='store_true', help='Send CVE scan result to Teams (use with --cves)')
+    parser.add_argument('--format', choices=['summary', 'packages', 'sarif', 'markdown'], default='markdown',
+                        help='CVE output format (default: markdown)')
     
     # Build arguments (positional)
     parser.add_argument('repo', nargs='?', help='Repository name')
@@ -292,6 +360,17 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-buildx
     # Handle --init
     if args.init:
         cmd_init(args)
+        return
+    
+    # Handle --cves
+    if args.cves:
+        # Can use --image for direct scan, or repo/ref for lookup
+        if not args.image and (not args.repo or not args.ref):
+            print("❌ Error: Either --image or repo and ref are required for CVE scanning", file=sys.stderr)
+            print("   Usage: buildx --cves --image <image:tag>", file=sys.stderr)
+            print("   Usage: buildx --cves <repo> <ref>", file=sys.stderr)
+            sys.exit(1)
+        cmd_cves(args)
         return
     
     # Handle build (default)

@@ -363,14 +363,22 @@ class JenkinsClient:
 
     def create_job_from_xml(self, job_name: str, xml_content: str, force: bool = False) -> dict:
         """Create or update job from XML configuration."""
+        import httpx
+        
         try:
-            # Check if job already exists
+            # Check if job already exists using direct API call for reliability
             job_exists = False
             try:
-                self.client[job_name]
-                job_exists = True
-                print(f"Job '{job_name}' already exists.")
-            except KeyError:
+                job = self.client[job_name]
+                # Verify job actually exists by checking if it has a valid url attribute
+                if job is not None and hasattr(job, 'url') and job.url:
+                    # Double-check by making a direct API call
+                    check_url = f"{self.url}/job/{job_name}/api/json"
+                    check_response = httpx.get(check_url, auth=self.client._auth)
+                    if check_response.status_code == 200:
+                        job_exists = True
+                        print(f"Job '{job_name}' already exists.")
+            except (KeyError, Exception):
                 job_exists = False
 
             if job_exists and not force:
@@ -382,16 +390,24 @@ class JenkinsClient:
                         'message': 'Job creation cancelled by user'
                     }
 
-            # Use direct HTTP requests for create/update operations
-            import httpx
-
             if job_exists:
-                # Update existing job
-                url = f"{self.url}/job/{job_name}/config.xml"
-                response = httpx.post(url, content=xml_content, auth=self.client._auth)
-                response.raise_for_status()
-                action = 'updated'
-            else:
+                # Try to update existing job
+                try:
+                    url = f"{self.url}/job/{job_name}/config.xml"
+                    headers = {'Content-Type': 'application/xml'}
+                    response = httpx.post(url, content=xml_content, headers=headers, auth=self.client._auth)
+                    response.raise_for_status()
+                    action = 'updated'
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 404:
+                        # Job doesn't actually exist (false positive from initial check)
+                        # Fall back to creating the job
+                        print(f"Job '{job_name}' not found, creating new job instead...")
+                        job_exists = False
+                    else:
+                        raise
+            
+            if not job_exists:
                 # Create new job
                 url = f"{self.url}/createItem"
                 params = {'name': job_name}

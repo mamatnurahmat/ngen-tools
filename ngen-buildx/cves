@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# Check if IMAGE argument is provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 <IMAGE>"
+    exit 1
+fi
+
+IMAGE=$1
+TEAMS_WEBHOOK_URL="https://qoinid.webhook.office.com/webhookb2/63088020-7311-4b72-89eb-bc9f58447c9f@e38b30ee-ec18-44bd-8385-08e0acf73344/IncomingWebhook/bda6ddbee1994ed2889eef787ec2eb3e/3609c769-241b-4a44-86c7-f95526b7b84c/V2_ldAc5LeB3fhZC8wtt8TIDqaMKOZf15jYNcH4gl1V4c1"
+#TEAMS_WEBHOOK_URL="${TEAMS_WEBHOOK_URL:-}"
+DOCKER_SCOUT_HUB_USER="newrahmat"
+DOCKER_SCOUT_HUB_PASSWORD="87d1df79-0d21-47c8-b808-89a0ac73c3b1"
+
+# Check if credentials are set in environment
+#if [ -z "$DOCKER_SCOUT_HUB_USER" ] || [ -z "$DOCKER_SCOUT_HUB_PASSWORD" ]; then
+#    echo "Error: DOCKER_SCOUT_HUB_USER and DOCKER_SCOUT_HUB_PASSWORD env variables must be set"
+#    exit 1
+#fi
+
+# Run Docker Scout and capture output
+SCOUT_OUTPUT=$(docker run --rm -t \
+  -u root \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v $HOME/.docker:/root/.docker \
+  -e DOCKER_SCOUT_HUB_USER="$DOCKER_SCOUT_HUB_USER" \
+  -e DOCKER_SCOUT_HUB_PASSWORD="$DOCKER_SCOUT_HUB_PASSWORD" \
+  docker/scout-cli cves "$IMAGE" 2>&1)
+
+# Parse CVE counts from output
+TOTAL=$(echo "$SCOUT_OUTPUT" | grep -oP '\d+(?= vulnerabilities?)' | head -1)
+CRITICAL=$(echo "$SCOUT_OUTPUT" | grep -i "critical" | grep -oP '\d+' | head -1)
+HIGH=$(echo "$SCOUT_OUTPUT" | grep -i "high" | grep -oP '\d+' | head -1)
+MEDIUM=$(echo "$SCOUT_OUTPUT" | grep -i "medium" | grep -oP '\d+' | head -1)
+LOW=$(echo "$SCOUT_OUTPUT" | grep -i "low" | grep -oP '\d+' | head -1)
+
+# Set default values if not found
+TOTAL=${TOTAL:-0}
+CRITICAL=${CRITICAL:-0}
+HIGH=${HIGH:-0}
+MEDIUM=${MEDIUM:-0}
+LOW=${LOW:-0}
+
+# Create simple report
+REPORT=$(cat <<EOF
+${TOTAL} vulnerabilities found
+
+  CRITICAL  ${CRITICAL}
+  HIGH      ${HIGH}
+  MEDIUM    ${MEDIUM}
+  LOW       ${LOW}
+EOF
+)
+
+echo "CVE Report for: $IMAGE"
+echo "$REPORT"
+
+# Send to Teams if webhook URL is configured
+if [ -n "$TEAMS_WEBHOOK_URL" ]; then
+    # Determine color based on severity
+    if [ "$CRITICAL" -gt 0 ]; then
+        COLOR="FF0000"  # Red
+    elif [ "$HIGH" -gt 0 ]; then
+        COLOR="FF6600"  # Orange
+    else
+        COLOR="00AA00"  # Green
+    fi
+
+    # Create Teams message JSON
+    TEAMS_MESSAGE=$(cat <<EOF
+{
+  "@type": "MessageCard",
+  "@context": "https://schema.org/extensions",
+  "summary": "Docker Scout CVE Report",
+  "themeColor": "${COLOR}",
+  "sections": [
+    {
+      "activityTitle": "Docker Scout CVE Report",
+      "activitySubtitle": "Image: ${IMAGE}",
+      "facts": [
+        {
+          "name": "Total Vulnerabilities",
+          "value": "${TOTAL}"
+        },
+        {
+          "name": "CRITICAL",
+          "value": "${CRITICAL}"
+        },
+        {
+          "name": "HIGH",
+          "value": "${HIGH}"
+        },
+        {
+          "name": "MEDIUM",
+          "value": "${MEDIUM}"
+        },
+        {
+          "name": "LOW",
+          "value": "${LOW}"
+        }
+      ]
+    }
+  ]
+}
+EOF
+)
+
+    # Send to Teams
+    curl -X POST "$TEAMS_WEBHOOK_URL" \
+      -H 'Content-Type: application/json' \
+      -d "$TEAMS_MESSAGE" \
+      -s -o /dev/null
+
+    echo -e "\n✓ Report sent to Teams"
+fi
+

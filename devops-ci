@@ -1,0 +1,785 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# -------------------------------
+# DevOps CI/CD Build Tool
+# Version: 2.0.1
+# Description: Advanced Docker image builder with SBOM and provenance support
+# Author: DevOps Team
+# Updates: Auto permission management, builder resource limits, auto-recovery
+# -------------------------------
+
+# Version information
+VERSION="2.0.1"
+BUILD_DATE="$(date +%Y-%m-%d)"
+
+# -------------------------------
+# Helper: Tampilkan versi
+# -------------------------------
+show_version() {
+  cat <<EOF
+🔧 DevOps CI/CD Build Tool v${VERSION}
+Build Date: ${BUILD_DATE}
+EOF
+}
+
+# -------------------------------
+# Helper: Log message (dengan support JSON/SHORT mode)
+# -------------------------------
+log_message() {
+  # Show messages in default and JSON mode, silent only in SHORT mode
+  if [[ "$SHORT_OUTPUT" == "false" ]]; then
+    # Jika JSON mode dan output di-pipe, kirim ke stderr
+    # Jika tidak, kirim ke stdout seperti biasa
+    if [[ "$JSON_OUTPUT" == "true" ]] && [ ! -t 1 ]; then
+      echo "$@" >&2
+    else
+      echo "$@"
+    fi
+  fi
+}
+
+# -------------------------------
+# Helper: Output JSON result
+# -------------------------------
+output_json_result() {
+  local build_end_time=$(date +%s)
+  local build_duration=$((build_end_time - BUILD_START_TIME))
+
+  # Convert boolean values properly
+  local rebuild_json="false"
+  [[ "$REBUILD" == "true" ]] && rebuild_json="true"
+
+  local ready_json="false"
+  [[ "$ready" == "true" ]] && ready_json="true"
+
+  # Escape double quotes in error message
+  local error_escaped="${BUILD_ERROR//\"/\\\"}"
+
+  # Format duration as human-readable
+  local duration_formatted=""
+  if [[ $build_duration -ge 3600 ]]; then
+    local hours=$((build_duration / 3600))
+    local minutes=$(((build_duration % 3600) / 60))
+    local seconds=$((build_duration % 60))
+    duration_formatted="${hours}h ${minutes}m ${seconds}s"
+  elif [[ $build_duration -ge 60 ]]; then
+    local minutes=$((build_duration / 60))
+    local seconds=$((build_duration % 60))
+    duration_formatted="${minutes}m ${seconds}s"
+  else
+    duration_formatted="${build_duration}s"
+  fi
+
+  cat <<EOF
+{
+  "status": "$BUILD_STATUS",
+  "repository": "$REPO",
+  "branch": "$REFS",
+  "image": "$build_image",
+  "rebuild": $rebuild_json,
+  "build_time": {
+    "start_unix": $BUILD_START_TIME,
+    "end_unix": $build_end_time,
+    "start_iso": "$(date -u -d @$BUILD_START_TIME +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r $BUILD_START_TIME +%Y-%m-%dT%H:%M:%SZ)",
+    "end_iso": "$(date -u -d @$build_end_time +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r $build_end_time +%Y-%m-%dT%H:%M:%SZ)",
+    "duration": {
+      "seconds": $build_duration,
+      "formatted": "$duration_formatted"
+    }
+  },
+  "config": {
+    "memory": "$DEFAULT_MEMORY",
+    "cpus": "$DEFAULT_CPUS",
+    "cpu_period": "$DEFAULT_CPU_PERIOD",
+    "cpu_quota": "$DEFAULT_CPU_QUOTA",
+    "builder": "$BUILDER_NAME"
+  },
+  "metadata": {
+    "ready": $ready_json,
+    "custom_image": "$CUSTOM_IMAGE",
+    "api_url": "$DEFAULT_URL_API"
+  },
+  "error": "$error_escaped",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+}
+
+# -------------------------------
+# Helper: Setup and verify buildx builder
+# -------------------------------
+setup_buildx_builder() {
+  local builder_name="$1"
+
+  # Fix permissions on Docker buildx directory if it exists
+  if [[ -d ~/.docker/buildx ]]; then
+    log_message "🔧 Checking Docker buildx permissions..."
+
+    # Check if we have write access
+    if [[ ! -w ~/.docker/buildx ]]; then
+      log_message "⚠️  Fixing Docker buildx directory permissions..."
+      sudo chown -R "$(whoami):$(whoami)" ~/.docker/buildx 2>/dev/null || {
+        # If sudo chown fails, try without sudo
+        chmod -R u+rw ~/.docker/buildx 2>/dev/null || true
+      }
+    fi
+
+    # Check and fix permissions on activity directory and files
+    if [[ -d ~/.docker/buildx/activity ]]; then
+      # Fix directory permissions
+      if [[ ! -w ~/.docker/buildx/activity ]]; then
+        log_message "⚠️  Fixing Docker buildx activity directory permissions..."
+        sudo chown -R "$(whoami):$(whoami)" ~/.docker/buildx/activity 2>/dev/null || {
+          chmod -R u+rw ~/.docker/buildx/activity 2>/dev/null || true
+        }
+      fi
+
+      # Fix individual file permissions (especially those owned by root)
+      for activity_file in ~/.docker/buildx/activity/*; do
+        if [[ -f "$activity_file" ]] && [[ ! -w "$activity_file" ]]; then
+          log_message "⚠️  Fixing permissions on $(basename "$activity_file")..."
+          sudo chown "$(whoami):$(whoami)" "$activity_file" 2>/dev/null || {
+            chmod u+rw "$activity_file" 2>/dev/null || true
+          }
+        fi
+      done
+    fi
+
+    # Check and fix permissions on refs directory (especially subdirectories owned by root)
+    if [[ -d ~/.docker/buildx/refs ]]; then
+      for refs_dir in ~/.docker/buildx/refs/*; do
+        if [[ -d "$refs_dir" ]] && [[ ! -r "$refs_dir" || ! -w "$refs_dir" || ! -x "$refs_dir" ]]; then
+          log_message "⚠️  Fixing permissions on refs/$(basename "$refs_dir")..."
+          sudo chown -R "$(whoami):$(whoami)" "$refs_dir" 2>/dev/null || {
+            chmod -R u+rwx "$refs_dir" 2>/dev/null || true
+          }
+        fi
+      done
+    fi
+  fi
+
+  # Check if builder exists
+  log_message "🔍 Verifying builder '$builder_name'..."
+  if docker buildx ls 2>/dev/null | grep -q "$builder_name"; then
+    log_message "✅ Builder '$builder_name' exists"
+
+    # Try to use the builder
+    if docker buildx use "$builder_name" 2>/dev/null; then
+      log_message "✅ Successfully switched to builder '$builder_name'"
+
+      # Apply/update resource limits on existing builder
+      log_message "🔧 Checking resource limits on builder container..."
+      local container_name=$(docker ps -a --filter "name=buildx_buildkit_${builder_name}" --format "{{.Names}}" | head -n 1)
+
+      if [[ -n "$container_name" ]]; then
+        # Check if container is running, start it if not
+        local container_status=$(docker inspect -f '{{.State.Status}}' "$container_name" 2>/dev/null || echo "not_found")
+
+        if [[ "$container_status" != "running" ]]; then
+          log_message "⚡ Starting builder container..."
+          docker start "$container_name" >/dev/null 2>&1 || true
+          sleep 2
+        fi
+
+        # Apply resource limits (with memory-swap to avoid conflicts)
+        if docker update --cpus="4" --memory="4g" --memory-swap="4g" "$container_name" >/dev/null 2>&1; then
+          log_message "✅ Resource limits applied/updated: 4 CPUs, 4GB RAM"
+        fi
+      fi
+
+      return 0
+    else
+      log_message "⚠️  Could not switch to builder '$builder_name', recreating..."
+      # Remove the broken builder
+      docker buildx rm "$builder_name" 2>/dev/null || true
+    fi
+  fi
+
+  # Create builder if it doesn't exist or was broken
+  log_message "🔨 Creating builder '$builder_name' with resource limits (4 CPUs, 4GB RAM)..."
+
+  # Clean up any leftover instance/activity files that might cause conflicts
+  if [[ -f ~/.docker/buildx/instances/"$builder_name" ]] || [[ -f ~/.docker/buildx/activity/"$builder_name" ]]; then
+    log_message "🧹 Cleaning up leftover builder files..."
+    rm -f ~/.docker/buildx/instances/"$builder_name" ~/.docker/buildx/activity/"$builder_name" 2>/dev/null || true
+  fi
+
+  if docker buildx create --name "$builder_name" --driver docker-container --use 2>/dev/null; then
+    log_message "✅ Builder '$builder_name' created successfully"
+
+    # Bootstrap the builder to create the container
+    log_message "⚡ Bootstrapping builder to start container..."
+    docker buildx inspect --bootstrap "$builder_name" >/dev/null 2>&1 || true
+    sleep 3  # Wait for container to fully start
+
+    # Apply resource limits to the builder container
+    log_message "🔧 Applying resource limits to builder container..."
+    local container_name=$(docker ps -a --filter "name=buildx_buildkit_${builder_name}" --format "{{.Names}}" | head -n 1)
+
+    if [[ -n "$container_name" ]]; then
+      if docker update --cpus="4" --memory="4g" --memory-swap="4g" "$container_name" >/dev/null 2>&1; then
+        log_message "✅ Resource limits applied: 4 CPUs, 4GB RAM"
+      else
+        log_message "⚠️  Warning: Could not apply resource limits to builder container"
+      fi
+    else
+      log_message "⚠️  Warning: Could not find builder container to apply limits"
+      log_message "   Limits will be applied on first use"
+    fi
+
+    return 0
+  else
+    log_message "⚠️  Warning: Could not create builder '$builder_name'"
+    log_message "   Attempting to use default builder..."
+    return 1
+  fi
+}
+
+# -------------------------------
+# Helper: Send notification to ntfy.sh
+# -------------------------------
+send_ntfy_notification() {
+  local ntfy_url="${NTFY_URL:-https://ntfy.sh/doi-notif}"
+  local json_payload=$(output_json_result)
+
+  # Determine notification title and priority based on build status
+  local title="🔧 Build ${BUILD_STATUS^}: $REPO"
+  local priority="default"
+  local tags="package"
+
+  case "$BUILD_STATUS" in
+    success)
+      title="✅ Build Success: $REPO"
+      priority="high"
+      tags="white_check_mark,package"
+      ;;
+    failed)
+      title="❌ Build Failed: $REPO"
+      priority="urgent"
+      tags="x,package,warning"
+      ;;
+    skipped)
+      title="⏭️ Build Skipped: $REPO"
+      priority="low"
+      tags="fast_forward,package"
+      ;;
+  esac
+
+  # Send notification to ntfy.sh
+  curl -sS \
+    -H "Title: $title" \
+    -H "Priority: $priority" \
+    -H "Tags: $tags" \
+    -H "Content-Type: application/json" \
+    -d "$json_payload" \
+    "$ntfy_url" > /dev/null 2>&1
+
+  local curl_exit_code=$?
+  if [[ $curl_exit_code -eq 0 ]]; then
+    log_message "📤 Notification sent to ntfy.sh"
+  else
+    log_message "⚠️  Warning: Failed to send notification to ntfy.sh (exit code: $curl_exit_code)"
+  fi
+}
+
+# -------------------------------
+# Helper: Tampilkan cara penggunaan
+# -------------------------------
+show_help() {
+  cat <<EOF
+🔧 DevOps CI/CD Build Tool
+==========================
+
+DESCRIPTION:
+  Build Docker images from Bitbucket repositories using buildx with advanced features
+  like SBOM generation, provenance attestation, and resource management.
+
+USAGE:
+  $(basename "$0") <REPO> <REFS> [--rebuild] [--json|--short] [CUSTOM_IMAGE]
+
+ARGUMENTS:
+  REPO           Repository name (e.g., saas-be-core, saas-apigateway)
+  REFS           Branch or tag name (e.g., develop, main, v1.0.0)
+  --rebuild      (Optional) Force rebuild even if image already exists
+  --json         (Optional) Show build progress + JSON result at end
+  --short        (Optional) Silent build, output only image name
+  CUSTOM_IMAGE   (Optional) Override image name/tag for build output
+
+OUTPUT MODES:
+  Default Mode   : Full progress with emoji and human-readable messages
+  --json Mode    : Full progress + structured JSON result at the end
+                   (Best for automation with real-time monitoring)
+  --short Mode   : Silent build, only outputs the final image name
+                   (Best for simple scripts and variable assignment)
+
+ENVIRONMENT VARIABLES:
+  Resource Limits:
+    DEFAULT_MEMORY       Memory limit (default: 2g)
+    DEFAULT_CPUS         CPU count (default: 1)
+    DEFAULT_CPU_PERIOD   CPU period (default: 100000)
+    DEFAULT_CPU_QUOTA    CPU quota (default: 100000)
+
+  API Configuration:
+    DEFAULT_URL_API      API endpoint URL (default: http://193.1.1.3:5000)
+
+  Build Configuration:
+    REGISTRY01_URL       Docker registry URL
+    IMAGE                Project image name
+    PORT                 Primary port
+    PORT2                Secondary port
+
+  Authentication:
+    GITUSERTOKEN         Git user token
+    BITBUCKET_USER       Bitbucket username
+    GITHUB_USER          GitHub username
+    BITBUCKET_TOKEN      Bitbucket access token
+    GITHUB_TOKEN         GitHub access token
+
+  Notification:
+    NTFY_URL             Ntfy.sh notification URL (default: https://ntfy.sh/doi-notif)
+
+EXAMPLES:
+  # Basic build
+  $0 saas-be-core develop
+
+  # Force rebuild existing image
+  $0 saas-be-core develop --rebuild
+
+  # Build with custom image name
+  $0 saas-be-core develop --rebuild loyaltolpi/saas-be-core:dev-123
+
+  # Build specific tag
+  $0 saas-apigateway v1.2.0
+
+  # Build with custom resource limits
+  DEFAULT_MEMORY=4g DEFAULT_CPUS=2 $0 saas-be-core develop
+
+  # Build with custom API endpoint
+  DEFAULT_URL_API=http://custom-api:5000 $0 saas-be-core develop
+
+  # Build with custom ntfy.sh notification URL
+  NTFY_URL=https://ntfy.sh/my-custom-topic $0 saas-be-core develop
+
+  # Build with JSON output (shows progress + JSON at end)
+  $0 saas-be-core develop --json
+
+  # Parse JSON from output
+  $0 saas-be-core develop --json | tee build.log
+  grep "BUILD RESULT" build.log -A 5 | grep '^{' | jq .
+
+  # Build with short output (silent, image name only)
+  $0 saas-be-core develop --short
+
+  # Use short output in variable
+  IMAGE=\$($0 saas-be-core develop --short)
+  echo "Built: \$IMAGE"
+
+FEATURES:
+  ✅ Multi-platform build support
+  ✅ SBOM (Software Bill of Materials) generation
+  ✅ Provenance attestation for security
+  ✅ Resource limit management
+  ✅ Automatic image caching
+  ✅ Bitbucket integration
+  ✅ Progress tracking
+  ✅ Real-time notifications via ntfy.sh
+
+BUILD PROCESS:
+  1. Fetch build metadata from API
+  2. Determine image name and build strategy
+  3. Load configuration from cicd.json
+  4. Execute Docker buildx with advanced features
+  5. Push image to registry
+
+EXIT CODES:
+  0 - Build successful
+  1 - Invalid arguments or build failed
+
+NOTES:
+  - Requires ~/.devops/auth.json for authentication
+  - Uses container-builder for multi-platform builds
+  - Images are automatically pushed to registry
+  - Build cache is disabled for reproducible builds
+  - Build notifications are automatically sent to ntfy.sh/doi-notif
+  - Notifications include build status, timing, and full configuration
+
+For more information, visit: https://github.com/loyaltoid/devops-tools
+EOF
+}
+
+# -------------------------------
+# Validasi & parsing argumen
+# -------------------------------
+REPO=${1:-}
+REFS=${2:-}
+REBUILD=false
+JSON_OUTPUT=false
+SHORT_OUTPUT=false
+CUSTOM_IMAGE=""
+BUILD_START_TIME=$(date +%s)
+BUILD_STATUS="pending"
+BUILD_ERROR=""
+build_image=""
+ready="false"
+BUILDER_NAME="container-builder"
+
+# Tampilkan help jika argumen kurang atau --help
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+  show_help
+  exit 0
+fi
+
+# Tampilkan versi jika diminta
+if [[ "$1" == "--version" || "$1" == "-v" ]]; then
+  show_version
+  exit 0
+fi
+
+# Validasi argumen wajib
+if [[ -z "$REPO" ]]; then
+  echo "❌ Error: Repository name is required"
+  echo "   Usage: $(basename "$0") <REPO> <REFS> [--rebuild] [CUSTOM_IMAGE]"
+  echo "   Example: $(basename "$0") saas-be-core develop"
+  echo ""
+  echo "   Use --help for more information"
+  exit 1
+fi
+
+if [[ -z "$REFS" ]]; then
+  echo "❌ Error: Branch/tag name is required"
+  echo "   Usage: $(basename "$0") <REPO> <REFS> [--rebuild] [CUSTOM_IMAGE]"
+  echo "   Example: $(basename "$0") $REPO develop"
+  echo ""
+  echo "   Use --help for more information"
+  exit 1
+fi
+
+# Validasi format repository name (basic check)
+if [[ ! "$REPO" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  echo "❌ Error: Invalid repository name '$REPO'"
+  echo "   Repository name should contain only letters, numbers, hyphens, and underscores"
+  exit 1
+fi
+
+# Parse optional arguments (--rebuild, --json, --short, CUSTOM_IMAGE)
+shift 2  # Remove REPO and REFS from arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --rebuild)
+      REBUILD=true
+      [[ "$SHORT_OUTPUT" == "false" ]] && echo "🔄 Rebuild mode enabled"
+      shift
+      ;;
+    --json)
+      JSON_OUTPUT=true
+      SHORT_OUTPUT=false
+      shift
+      ;;
+    --short)
+      SHORT_OUTPUT=true
+      JSON_OUTPUT=false
+      shift
+      ;;
+    *)
+      # Assume this is CUSTOM_IMAGE
+      CUSTOM_IMAGE="$1"
+      [[ "$SHORT_OUTPUT" == "false" ]] && echo "📝 Custom image specified: $CUSTOM_IMAGE"
+      shift
+      ;;
+  esac
+done
+
+# -------------------------------
+# Default resource limits
+# -------------------------------
+: "${DEFAULT_MEMORY:=2g}"
+: "${DEFAULT_CPUS:=1}"
+: "${DEFAULT_CPU_PERIOD:=100000}"
+: "${DEFAULT_CPU_QUOTA:=100000}"
+: "${DEFAULT_URL_API:=http://193.1.1.3:5000}"
+: "${REGISTRY01_URL:=}"
+: "${REFS:=}"
+: "${IMAGE:=}"
+: "${PORT:=}"
+: "${PORT2:=}"
+: "${GITUSERTOKEN:=}"
+: "${BITBUCKET_USER:=}"
+: "${GITHUB_USER:=}"
+: "${BITBUCKET_TOKEN:=}"
+: "${GITHUB_TOKEN:=}"
+
+# -------------------------------
+# Setup exit handler untuk JSON/SHORT output
+# -------------------------------
+cleanup() {
+  # Send notification to ntfy.sh
+  send_ntfy_notification
+
+  if [[ "$JSON_OUTPUT" == "true" ]]; then
+    # Jika output di-pipe (not a tty), output hanya JSON
+    # Jika output ke terminal, tampilkan dengan separator
+    if [ -t 1 ]; then
+      # Output ke terminal (interactive)
+      echo ""
+      echo "========== BUILD RESULT (JSON) =========="
+      output_json_result
+      echo "=========================================="
+    else
+      # Output di-pipe atau redirect, hanya JSON
+      output_json_result
+    fi
+  elif [[ "$SHORT_OUTPUT" == "true" ]]; then
+    echo "$build_image"
+  fi
+}
+
+trap cleanup EXIT
+
+# -------------------------------
+# Ambil metadata dari API
+# -------------------------------
+log_message "📦 Fetching build metadata for repo=$REPO, refs=$REFS ..."
+response=$(curl -sX GET "${DEFAULT_URL_API}/v1/image/fe?repo=$REPO&refs=$REFS" -H "accept: application/json")
+
+# Check if API call was successful
+if [[ $? -ne 0 ]]; then
+  BUILD_STATUS="failed"
+  BUILD_ERROR="Failed to fetch build metadata from API"
+  log_message "❌ Error: Failed to fetch build metadata from API"
+  log_message "   Please check your network connection and API endpoint"
+  exit 1
+fi
+
+# Check if response is valid JSON
+if ! echo "$response" | jq . >/dev/null 2>&1; then
+  BUILD_STATUS="failed"
+  BUILD_ERROR="Invalid response from API: $response"
+  log_message "❌ Error: Invalid response from API"
+  log_message "   Response: $response"
+  exit 1
+fi
+
+ready=$(echo "$response" | jq -r '.ready')
+
+# Check if ready field exists
+if [[ "$ready" == "null" ]]; then
+  BUILD_STATUS="failed"
+  BUILD_ERROR="Invalid response format from API - missing 'ready' field"
+  log_message "❌ Error: Invalid response format from API"
+  log_message "   Missing 'ready' field in response"
+  exit 1
+fi
+
+# -------------------------------
+# Tentukan build_image
+# -------------------------------
+if [ -n "$CUSTOM_IMAGE" ]; then
+  build_image="$CUSTOM_IMAGE"
+  log_message "📝 Using custom image: $build_image"
+elif [ "$REBUILD" = true ]; then
+  if [ "$ready" = "true" ]; then
+    build_image=$(echo "$response" | jq -r '.["image"]')
+    log_message "♻️  Rebuilding existing image: $build_image"
+  else
+    build_image=$(echo "$response" | jq -r '.["build-image"]')
+    log_message "🆕 Building new image: $build_image"
+  fi
+else
+  if [ "$ready" = "true" ]; then
+    build_image=$(echo "$response" | jq -r '.["image"]')
+    BUILD_STATUS="skipped"
+    log_message "✅ Image already ready: $build_image. Skipping build."
+    exit 0
+  else
+    build_image=$(echo "$response" | jq -r '.["build-image"]')
+    log_message "🆕 Building new image: $build_image"
+  fi
+fi
+
+
+# -------------------------------
+# Jalankan proses build
+# -------------------------------
+log_message "🚧 Starting build process..."
+log_message "📋 Build configuration:"
+log_message "   Repository: $REPO"
+log_message "   Branch/Tag: $REFS"
+log_message "   Image: $build_image"
+log_message "   Rebuild: $REBUILD"
+log_message "   Memory: $DEFAULT_MEMORY"
+log_message "   CPUs: $DEFAULT_CPUS"
+
+# Fetch configuration from API
+log_message "📥 Fetching build configuration..."
+config_response=$(curl -sX GET "${DEFAULT_URL_API}/v1/file?repo=$REPO&refs=$REFS&path=cicd%2Fcicd.json" -H "accept: application/json")
+
+# Check if config API call was successful
+if [[ $? -ne 0 ]]; then
+  BUILD_STATUS="failed"
+  BUILD_ERROR="Failed to fetch build configuration from API"
+  log_message "❌ Error: Failed to fetch build configuration from API"
+  exit 1
+fi
+
+# Check if config response is valid JSON
+if ! echo "$config_response" | jq . >/dev/null 2>&1; then
+  BUILD_STATUS="failed"
+  BUILD_ERROR="Invalid configuration response from API: $config_response"
+  log_message "❌ Error: Invalid configuration response from API"
+  log_message "   Response: $config_response"
+  exit 1
+fi
+
+# Load configuration
+eval "$(echo "$config_response" | jq -r '. | to_entries | .[] | .key + "=\"" + .value + "\""')"
+
+# Load authentication
+if [[ ! -f ~/.devops/auth.json ]]; then
+  BUILD_STATUS="failed"
+  BUILD_ERROR="Authentication file ~/.devops/auth.json not found"
+  log_message "❌ Error: Authentication file ~/.devops/auth.json not found"
+  log_message "   Please ensure the authentication file exists and is accessible"
+  exit 1
+fi
+
+eval "$(jq -r '. | to_entries | .[] | .key + "=\"" + .value + "\""' < ~/.devops/auth.json)"
+
+# Setup and verify buildx builder before building
+setup_buildx_builder "$BUILDER_NAME"
+
+log_message "🔨 Executing Docker buildx command..."
+BUILD_STATUS="building"
+
+# ============================================================================
+# GIT SUBMODULE FIX: PRE-CLONE WITH --no-recurse-submodules
+# ============================================================================
+# PROBLEM:
+#   Docker buildx's "load git source" phase attempts to initialize git
+#   submodules when cloning from git URL. If repository has incomplete
+#   .gitmodules (missing URL for a submodule), git fails with:
+#   "fatal: No url found for submodule path '...' in .gitmodules"
+#
+# SOLUTION:
+#   1. Pre-clone repository locally with --no-recurse-submodules flag
+#      This skips submodule initialization at clone time
+#   2. Pass local directory to docker buildx build instead of git URL
+#      This avoids docker buildx attempting git submodule operations
+#   3. Cleanup temporary directory after build completes
+#
+# AFFECTED REPOSITORIES:
+#   - saas-apigateway (has ngenwal-alto-apigateway submodule)
+#   - Any other repo with incomplete .gitmodules configuration
+#
+# TECHNICAL DETAILS:
+#   - Uses --no-recurse-submodules: Skips recursive clone of submodules
+#   - Temp directory: /tmp/buildx-<REPO>-<REFS>-<PID>
+#   - Works across all output modes: SHORT, JSON, DEFAULT
+# ============================================================================
+
+# Pre-clone repository with --no-recurse-submodules to avoid submodule errors
+log_message "📥 Pre-cloning repository (avoiding submodule issues)..."
+CLONE_DIR="/tmp/buildx-${REPO}-${REFS}-$$"  # Temp directory: /tmp/buildx-<REPO>-<REFS>-<PID>
+mkdir -p "$CLONE_DIR"  # Create temporary directory
+
+# Clone with --no-recurse-submodules to skip submodule initialization
+# This prevents the "No url found for submodule" error
+if ! git clone --no-recurse-submodules -b "$REFS" "https://${BITBUCKET_USER}:${BITBUCKET_TOKEN}@bitbucket.org/loyaltoid/${REPO}.git" "$CLONE_DIR" >/dev/null 2>&1; then
+  BUILD_STATUS="failed"
+  BUILD_ERROR="Failed to pre-clone repository"
+  log_message "❌ Error: Failed to pre-clone repository"
+  rm -rf "$CLONE_DIR"  # Cleanup on failure
+  exit 1
+fi
+log_message "✅ Repository pre-cloned successfully"
+
+# Redirect docker output only for SHORT mode (JSON mode shows progress)
+if [[ "$SHORT_OUTPUT" == "true" ]]; then
+  # Short mode: silent build
+  # Note: Using $CLONE_DIR (local path) instead of git URL prevents
+  #       docker buildx from attempting git submodule initialization
+  docker buildx build \
+    --builder container-builder \
+    --sbom=true \
+    --no-cache \
+    --attest type=provenance,mode=max \
+    --memory "$DEFAULT_MEMORY" \
+    --cpu-period "$DEFAULT_CPU_PERIOD" \
+    --cpu-quota "$DEFAULT_CPU_QUOTA" \
+    --progress=plain \
+    --build-arg REGISTRY01="$REGISTRY01_URL" \
+    --build-arg BRANCH="$REFS" \
+    --build-arg PROJECT="$IMAGE" \
+    --build-arg PORT="$PORT" \
+    --build-arg PORT2="$PORT2" \
+    --build-arg GITUSERTOKEN="$GITUSERTOKEN" \
+    --build-arg BITBUCKET_USER="$BITBUCKET_USER" \
+    --build-arg GITHUB_USER="$GITHUB_USER" \
+    --build-arg BITBUCKET_TOKEN="$BITBUCKET_TOKEN" \
+    --build-arg GITHUB_TOKEN="$GITHUB_TOKEN" \
+    --build-arg GIT_TERMINAL_PROMPT=0 \
+    --build-arg GIT_AUTHOR_NAME="CI" \
+    --build-arg GIT_AUTHOR_EMAIL="ci@loyalto.id" \
+    --build-arg GIT_SUBMODULE_STRATEGY=none \
+    -t "$build_image" \
+    --push \
+    "$CLONE_DIR" >/dev/null 2>&1
+
+  if [[ $? -eq 0 ]]; then
+    BUILD_STATUS="success"
+  else
+    BUILD_STATUS="failed"
+    BUILD_ERROR="Docker buildx command failed"
+  fi
+else
+  # Default mode atau JSON mode interactive: output normal
+  # Note: Using $CLONE_DIR (local path) instead of git URL prevents
+  #       docker buildx from attempting git submodule initialization
+  docker buildx build \
+    --builder container-builder \
+    --sbom=true \
+    --no-cache \
+    --attest type=provenance,mode=max \
+    --memory "$DEFAULT_MEMORY" \
+    --cpu-period "$DEFAULT_CPU_PERIOD" \
+    --cpu-quota "$DEFAULT_CPU_QUOTA" \
+    --progress=plain \
+    --build-arg REGISTRY01="$REGISTRY01_URL" \
+    --build-arg BRANCH="$REFS" \
+    --build-arg PROJECT="$IMAGE" \
+    --build-arg PORT="$PORT" \
+    --build-arg PORT2="$PORT2" \
+    --build-arg GITUSERTOKEN="$GITUSERTOKEN" \
+    --build-arg BITBUCKET_USER="$BITBUCKET_USER" \
+    --build-arg GITHUB_USER="$GITHUB_USER" \
+    --build-arg BITBUCKET_TOKEN="$BITBUCKET_TOKEN" \
+    --build-arg GITHUB_TOKEN="$GITHUB_TOKEN" \
+    --build-arg GIT_TERMINAL_PROMPT=0 \
+    --build-arg GIT_AUTHOR_NAME="CI" \
+    --build-arg GIT_AUTHOR_EMAIL="ci@loyalto.id" \
+    --build-arg GIT_SUBMODULE_STRATEGY=none \
+    -t "$build_image" \
+    --push \
+    "$CLONE_DIR"
+
+  if [[ $? -eq 0 ]]; then
+    BUILD_STATUS="success"
+    log_message "✅ Build complete: $build_image"
+  else
+    BUILD_STATUS="failed"
+    BUILD_ERROR="Docker buildx command failed"
+    log_message "❌ Build failed"
+    exit 1
+  fi
+fi
+
+# ============================================================================
+# CLEANUP: Remove temporary clone directory
+# ============================================================================
+# After docker buildx build completes (success or failure), clean up the
+# temporary directory to free up disk space. This ensures no orphaned
+# directories are left behind from the pre-clone operation.
+# ============================================================================
+# Cleanup temporary clone directory
+[[ -d "$CLONE_DIR" ]] && rm -rf "$CLONE_DIR"%                                                         
