@@ -231,7 +231,7 @@ def load_local_cicd_config(cicd_path: str = "cicd/cicd.json") -> Dict[str, Any]:
 
 
 def get_short_commit_id(repo: str, ref: str, org: Optional[str] = None) -> str:
-    """Get short commit ID (6 characters) for a branch/tag.
+    """Get short commit ID (7 characters) for a branch/tag.
     
     Args:
         repo: Repository name
@@ -239,7 +239,7 @@ def get_short_commit_id(repo: str, ref: str, org: Optional[str] = None) -> str:
         org: Organization (optional)
     
     Returns:
-        str: 6-character short commit ID
+        str: 7-character short commit ID
     
     Raises:
         BuildxError: If fetching fails
@@ -256,26 +256,26 @@ def get_short_commit_id(repo: str, ref: str, org: Optional[str] = None) -> str:
             text=True,
             check=True
         )
-        # Get first 6 characters of commit hash
+        # Get first 7 characters of commit hash
         commit_hash = result.stdout.strip()
-        return commit_hash[:6] if commit_hash else ref
+        return commit_hash[:7] if commit_hash else ref
     except subprocess.CalledProcessError:
         # Fallback to ref if can't get commit
         return ref
 
 
 def get_local_short_commit_id() -> str:
-    """Get short commit ID (6 characters) from local git repository.
+    """Get short commit ID (7 characters) from local git repository.
     
     Returns:
-        str: 6-character short commit ID
+        str: 7-character short commit ID
     
     Raises:
         BuildxError: If not in a git repository
     """
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--short=6", "HEAD"],
+            ["git", "rev-parse", "--short=7", "HEAD"],
             capture_output=True,
             text=True,
             check=True

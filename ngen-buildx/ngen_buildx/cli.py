@@ -63,6 +63,10 @@ def cmd_build(args):
             for arg in args.build_arg:
                 extra_build_args.extend(["--build-arg", arg])
         
+        if args.secret:
+            for secret in args.secret:
+                extra_build_args.extend(["--secret", secret])
+        
         result = execute_build(
             repo=repo,
             ref=ref,
@@ -85,12 +89,27 @@ def cmd_build(args):
             print(json.dumps(result, indent=2))
         elif args.json:
             # Simple JSON output: only NS, DEPLOY, IMAGE
+            # For dry-run: ready = image already exists in registry
+            # For build: ready = build succeeded and image is available
+            # For skipped: ready = true (image already exists)
+            if result.get("dry_run"):
+                is_ready = result.get("image_exists", False)
+            elif result.get("skipped"):
+                is_ready = True  # Image already exists, so it's ready
+            else:
+                is_ready = result.get("success", False)
+            
             simple_result = {
-                "ready": result.get("success", False),
+                "ready": is_ready,
                 "NS": result.get("NS", ""),
                 "DEPLOY": result.get("DEPLOY", ""),
                 "IMAGE": result.get("image_tag", "")
             }
+            if result.get("dry_run"):
+                simple_result["dry_run"] = True
+                simple_result["image_exists"] = result.get("image_exists", False)
+            if result.get("skipped"):
+                simple_result["skipped"] = True
             if result.get("error"):
                 simple_result["error"] = result.get("error")
             print(json.dumps(simple_result, indent=2))
@@ -345,6 +364,8 @@ For more information, visit: https://github.com/mamatnurahmat/ngen-buildx
     parser.add_argument('--org', help='Organization (default: from config)')
     parser.add_argument('--build-arg', action='append', metavar='KEY=VALUE', 
                         help='Set build argument (can be used multiple times, overrides arg.json)')
+    parser.add_argument('--secret', action='append', metavar='id=ID,src=PATH',
+                        help='Secret to expose to the build (can be used multiple times)')
     parser.add_argument('--dry-run', action='store_true', help='Show command without executing')
     parser.add_argument('--json', action='store_true', help='Output as simple JSON (NS, DEPLOY, IMAGE)')
     parser.add_argument('--json-detail', action='store_true', help='Output as detailed JSON with all fields')
